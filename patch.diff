@@ -1,0 +1,355 @@
+﻿diff --git a/src/pages/ModuleAndAccess/Modals/ModifyWorkflowModal.tsx b/src/pages/ModuleAndAccess/Modals/ModifyWorkflowModal.tsx
+index 81adaf1..03141d6 100644
+--- a/src/pages/ModuleAndAccess/Modals/ModifyWorkflowModal.tsx
++++ b/src/pages/ModuleAndAccess/Modals/ModifyWorkflowModal.tsx
+@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
+ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
+ import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
++import { ViewUsersListModal } from './ViewUsersListModal';
+ import { Checkbox } from '@/components/ui/checkbox';
+ import { Button } from '@/components/ui/button';
+-import { Trash2 } from 'lucide-react';
++import { Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+ import LocationsAndStoresTab from '../LocationsAndStoresTab';
+ import { supabase } from '@/Utils/types/supabaseClient';
+@@ -25,6 +26,8 @@ export interface ModifyWorkflowModalProps {
+   setModifyWorkflowStores: (stores: string[]) => void;
+   partiallyConfiguredStores?: Record<string, { configuredCount: number, totalCount: number }>;
+   setPartiallyConfiguredStores?: (stores: Record<string, { configuredCount: number, totalCount: number }>) => void;
++  configuredUsersPerStore?: Record<string, string[]>;
++  handleInstantWorkflowToggle?: (userIds: string | string[], storeId: string, isChecked: boolean, storeLabel?: string) => Promise<void>;
+   setStoreToDelete: (store: any) => void;
+   setActionToDelete: (action: any) => void;
+   handleEditWorkflowConfigSubmit: (isStoreSpecific?: boolean) => void;
+@@ -46,11 +49,78 @@ export const ModifyWorkflowModal: React.FC<ModifyWorkflowModalProps> = ({
+   setModifyWorkflowStores,
+   partiallyConfiguredStores,
+   setPartiallyConfiguredStores,
++  configuredUsersPerStore,
++  handleInstantWorkflowToggle,
+   setStoreToDelete,
+   setActionToDelete,
+   handleEditWorkflowConfigSubmit
+ }) => {
+   const [isStoreSpecific, setIsStoreSpecific] = useState<boolean>(true);
++  const [expandedUserIds, setExpandedUserIds] = useState<Set<string>>(new Set());
++  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
++  const [viewUsersList, setViewUsersList] = useState<any[] | null>(null);
++
++  useEffect(() => {
++    if (showModifyWorkflowModal) {
++      setSelectedGroupId(null);
++    }
++  }, [showModifyWorkflowModal, modifyWorkflowAction]);
++
++  const toggleUser = (userId: string) => {
++    setExpandedUserIds(prev => {
++      const next = new Set(prev);
++      if (next.has(userId)) next.delete(userId);
++      else next.add(userId);
++      return next;
++    });
++  };
++
++  const isGroupView = !!(modifyWorkflowAction?.groupUsers && modifyWorkflowAction.groupUsers.length > 0);
++  const isSingleUserView = !isGroupView && selectedRoles.length === 1 && filterUser && filterUser !== NONE && filterUser !== '__none__';
++  const targetUsers = isGroupView ? modifyWorkflowAction.groupUsers : (isSingleUserView ? users.filter(u => u.id === filterUser) : users);
++
++  const groupedUsers = React.useMemo(() => {
++    if (!targetUsers || targetUsers.length <= 1) return targetUsers?.map((u: any) => ({ ...u, originalUsers: [u] })) || [];
++
++    const map = new Map<string, any[]>();
++    targetUsers.forEach((user: any) => {
++      const userStores = availableStores
++        .filter(s => configuredUsersPerStore?.[s.id]?.includes(user.id))
++        .map(s => s.id)
++        .sort()
++        .join(',');
++      
++      if (!map.has(userStores)) {
++        map.set(userStores, []);
++      }
++      map.get(userStores)!.push(user);
++    });
++
++    const groups: any[] = [];
++    map.forEach((usersInGroup) => {
++      if (usersInGroup.length === 1) {
++        groups.push({ ...usersInGroup[0], originalUsers: [usersInGroup[0]] });
++      } else {
++        const id = usersInGroup.map((u: any) => u.id).join(',');
++        const first_name = usersInGroup.length <= 2 
++          ? usersInGroup.map((u: any) => `${u.first_name} ${u.last_name}`).join(', ')
++          : `${usersInGroup[0].first_name} ${usersInGroup[0].last_name}, ${usersInGroup[1].first_name} ${usersInGroup[1].last_name} + ${usersInGroup.length - 2} more`;
++        const email = usersInGroup.length <= 2 
++          ? usersInGroup.map((u: any) => u.email || 'No email').join(', ')
++          : `${usersInGroup.length} users in this group`;
++          
++        groups.push({
++          id,
++          first_name,
++          last_name: '',
++          email,
++          isGrouped: true,
++          originalUsers: usersInGroup
++        });
++      }
++    });
++    return groups;
++  }, [targetUsers, availableStores, configuredUsersPerStore]);
+ 
+   useEffect(() => {
+     const fetchModuleInfo = async () => {
+@@ -73,6 +143,7 @@ export const ModifyWorkflowModal: React.FC<ModifyWorkflowModalProps> = ({
+   }, [modifyWorkflowAction]);
+ 
+   return (
++    <>
+     <Dialog open={showModifyWorkflowModal} onOpenChange={setShowModifyWorkflowModal}>
+       <DialogContent className="sm:max-w-4xl rounded-2xl border-0 p-0 overflow-hidden">
+         <DialogHeader className="px-6 py-5 border-b bg-white flex flex-row items-center justify-between">
+@@ -114,7 +185,7 @@ export const ModifyWorkflowModal: React.FC<ModifyWorkflowModalProps> = ({
+                   <Table>
+                     <TableHeader className="bg-slate-50">
+                       <TableRow>
+-                        <TableHead className="w-[200px]">Action</TableHead>
++                        <TableHead className="w-[150px]">Action</TableHead>
+                         <TableHead>Workflow Configured Stores</TableHead>
+                         <TableHead className="w-[80px] text-center"></TableHead>
+                       </TableRow>
+@@ -122,85 +193,118 @@ export const ModifyWorkflowModal: React.FC<ModifyWorkflowModalProps> = ({
+                     <TableBody>
+                       {modifyWorkflowAction && (
+                         <TableRow>
+-                          <TableCell className="font-medium text-slate-900 border-r bg-slate-50/50">
+-                            {modifyWorkflowAction.actionName}
++                          <TableCell className="align-top pt-5 whitespace-nowrap text-sm font-semibold text-slate-800">
++                            {modifyWorkflowAction?.actionName}
+                           </TableCell>
+-                          <TableCell className="whitespace-normal min-w-[300px]">
+-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 py-2 w-full">
+-                              {availableStores.map((store) => (
+-                                <div key={store.id} className="flex items-start w-full">
+-                                  <TooltipProvider>
+-                                    <Tooltip>
+-                                      <TooltipTrigger asChild>
+-                                        <div className="flex items-start space-x-3 w-full">
+-                                          {(() => {
+-                                            const isSingleUser = selectedRoles.length === 1 && filterUser && filterUser !== NONE;
+-                                            const isAllUsersInRole = selectedRoles.length === 1 && (!filterUser || filterUser === NONE);
+-                                            const isGroupView = !!(modifyWorkflowAction && modifyWorkflowAction.groupUsers && modifyWorkflowAction.groupUsers.length > 0);
+-                                            const isInherited = (isSingleUser && (storeScopeLevels[store.id]?.includes('Global') || storeScopeLevels[store.id]?.includes('Role'))) ||
+-                                              (isGroupView && (storeScopeLevels[store.id]?.includes('Global') || storeScopeLevels[store.id]?.includes('Role'))) ||
+-                                              (!isGroupView && isAllUsersInRole && storeScopeLevels[store.id]?.includes('Global'));
+-                                            const isReallyDisabled = store.isDisabled && !modifyWorkflowStores.includes(store.id);
+-                                            const isCheckboxDisabled = isReallyDisabled || isInherited;
+-
+-                                            const isPartiallyConfigured = !!(partiallyConfiguredStores && partiallyConfiguredStores[store.id]);
+-                                            const isChecked = modifyWorkflowStores.includes(store.id);
+-                                            const checkState = isChecked ? true : (isPartiallyConfigured ? "indeterminate" : false);
+-
+-                                            return (
+-                                              <>
+-                                                <Checkbox
+-                                                  id={`store-${store.id}`}
+-                                                  checked={checkState}
+-                                                  disabled={isCheckboxDisabled}
+-                                                  className={`mt-0.5 flex-shrink-0 ${isCheckboxDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+-                                                  onCheckedChange={(checked) => {
+-                                                    if (checked === true || checked === "indeterminate") {
+-                                                      setModifyWorkflowStores([...modifyWorkflowStores, store.id]);
+-                                                    } else {
+-                                                      if (storeScopeLevels[store.id] && storeScopeLevels[store.id].length > 0) {
+-                                                        setStoreToDelete({ id: store.id, label: store.label });
+-                                                      } else {
+-                                                        setModifyWorkflowStores(modifyWorkflowStores.filter(id => id !== store.id));
+-                                                      }
+-                                                    }
+-                                                  }}
+-                                                />
+-                                                <label
+-                                                  htmlFor={`store-${store.id}`}
+-                                                  className={`text-sm font-medium leading-snug cursor-pointer whitespace-normal break-words flex-1 flex items-center gap-1.5 ${isCheckboxDisabled ? 'text-slate-400' : 'text-slate-700'}`}
+-                                                >
+-                                                  <span>{store.label}</span>
+-                                                  {isPartiallyConfigured && partiallyConfiguredStores && (
+-                                                    <TooltipProvider>
+-                                                      <Tooltip>
+-                                                        <TooltipTrigger asChild>
+-                                                          <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-md font-medium cursor-help whitespace-nowrap">
+-                                                            ({partiallyConfiguredStores[store.id].configuredCount}/{partiallyConfiguredStores[store.id].totalCount} users)
+-                                                          </span>
+-                                                        </TooltipTrigger>
+-                                                        <TooltipContent>
+-                                                          <p className="max-w-[200px] whitespace-normal">This workflow is configured for a subset of users. Checking this will apply it to all users.</p>
+-                                                        </TooltipContent>
+-                                                      </Tooltip>
+-                                                    </TooltipProvider>
+-                                                  )}
+-                                                </label>
+-                                              </>
+-                                            );
+-                                          })()}
++                          <TableCell className="whitespace-normal min-w-[300px] p-0">
++                            {targetUsers.length > 1 ? (
++                              <div className="w-full flex flex-col">
++                                {groupedUsers.map((user: any) => {
++                                  const isExpanded = expandedUserIds.has(user.id);
++                                  const representativeUserId = user.originalUsers[0].id;
++                                  const userConfiguredStoresCount = availableStores.filter(s => configuredUsersPerStore?.[s.id]?.includes(representativeUserId)).length;
++                                  const accessibleStoresCount = availableStores.filter(store => {
++                                    const isChecked = configuredUsersPerStore?.[store.id]?.includes(representativeUserId) || false;
++                                    const isInherited = storeScopeLevels[store.id]?.includes('Global') || storeScopeLevels[store.id]?.includes('Role');
++                                    const isReallyDisabled = store.isDisabled && !isChecked;
++                                    return !(isReallyDisabled || isInherited);
++                                  }).length;
++                                  
++                                  return (
++                                    <div key={user.id} className="w-full border-b last:border-b-0">
++                                      <div 
++                                        className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors"
++                                        onClick={() => toggleUser(user.id)}
++                                      >
++                                        <div className="flex items-center gap-3">
++                                          <Checkbox
++                                            id={`group-select-${user.id}`}
++                                            className="w-4 h-4 border-gray-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
++                                            checked={selectedGroupId === user.id}
++                                            onCheckedChange={(checked) => {
++                                              if (checked) setSelectedGroupId(user.id);
++                                              else setSelectedGroupId(null);
++                                            }}
++                                            onClick={(e) => e.stopPropagation()}
++                                          />
++                                          <div className="flex flex-col">
++                                            <span className="font-medium text-slate-800">{user.first_name} {user.last_name}</span>
++                                            {user.originalUsers.length <= 2 ? (
++                                              <span className="text-xs text-slate-500">{user.email || 'No email'}</span>
++                                            ) : (
++                                              <button
++                                                className="text-xs text-blue-600 cursor-pointer text-left hover:text-blue-700 font-medium"
++                                                onClick={(e) => {
++                                                  e.stopPropagation();
++                                                  setViewUsersList(user.originalUsers);
++                                                }}
++                                              >
++                                                {user.originalUsers.length} users in this group
++                                              </button>
++                                            )}
++                                          </div>
++                                        </div>
++                                        <div className="flex items-center gap-3">
++                                          <span className="text-xs font-medium bg-blue-50 text-blue-700 px-2 py-1 rounded-md">
++                                            {userConfiguredStoresCount} / {accessibleStoresCount} stores
++                                          </span>
++                                          {isExpanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                                         </div>
+-                                      </TooltipTrigger>
+-                                      {store.isDisabled && !modifyWorkflowStores.includes(store.id) && (
+-                                        <TooltipContent>
+-                                          <p>The selected users do not have access to this store.</p>
+-                                        </TooltipContent>
+-                                      )}
+-                                    </Tooltip>
+-                                  </TooltipProvider>
+-                                </div>
+-                              ))}
+-                            </div>
++                                      </div>
++                                      
++                                                setStoreToDelete({ id: store.id, label: store.label });
++                                              } else {
++                                                setModifyWorkflowStores(modifyWorkflowStores.filter(id => id !== store.id));
++                                              }
++                                            }
++                                          }}
++                                        />
++                                        <label
++                                          htmlFor={`store-${store.id}`}
++                                          className={`text-sm font-medium leading-snug cursor-pointer whitespace-normal break-words flex-1 flex items-center gap-1.5 ml-3 ${isCheckboxDisabled ? 'text-slate-400' : 'text-slate-700'}`}
++                                        >
++                                          <span>{store.label}</span>
++                                          {isPartiallyConfigured && partiallyConfiguredStores && (
++                                            <TooltipProvider>
++                                              <Tooltip>
++                                                <TooltipTrigger asChild>
++                                                  <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-md font-medium cursor-help whitespace-nowrap">
++                                                    ({partiallyConfiguredStores[store.id].configuredCount}/{partiallyConfiguredStores[store.id].totalCount} users)
++                                                  </span>
++                                                </TooltipTrigger>
++                                                <TooltipContent>
++                                                  <p className="max-w-[200px] whitespace-normal">This workflow is configured for a subset of users. Checking this will apply it to all users.</p>
++                                                </TooltipContent>
++                                              </Tooltip>
++                                            </TooltipProvider>
++                                          )}
++                                        </label>
++                                      </div>
++                                    );
++                                    
++                                    if (isCheckboxDisabled) {
++                                      return (
++                                        <TooltipProvider key={store.id}>
++                                          <Tooltip>
++                                            <TooltipTrigger asChild>
++                                              <div className="cursor-not-allowed w-full">
++                                                <div className="pointer-events-none w-full">
++                                                  {content}
++                                                </div>
++                                              </div>
++                                            </TooltipTrigger>
++                                            <TooltipContent>
++                                              <p>{isInherited ? 'Workflow is inherited from a higher scope level.' : 'Store is currently inactive.'}</p>
++                                            </TooltipContent>
++                                          </Tooltip>
++                                        </TooltipProvider>
++                                      );
++                                    }
++                                    
++                                    return content;
++                                })}
++                              </div>
++                            )}
+                           </TableCell>
+                           <TableCell className="text-center align-top pt-5">
+                             {modifyWorkflowStores.length > 0 && (
+@@ -252,9 +356,22 @@ export const ModifyWorkflowModal: React.FC<ModifyWorkflowModalProps> = ({
+               <Button variant="outline" className="rounded-xl px-6" onClick={() => setShowModifyWorkflowModal(false)}>
+                 Cancel
+               </Button>
+-              <Button className="bg-blue-600 hover:bg-blue-700 rounded-xl px-6 text-white" onClick={() => {
+-                handleEditWorkflowConfigSubmit(isStoreSpecific);
+-              }}>
++              <Button 
++                className="bg-blue-600 hover:bg-blue-700 rounded-xl px-6 text-white" 
++                onClick={() => {
++                  const selectedGroup = groupedUsers.find(u => u.id === selectedGroupId);
++                  let configuredStoreIds = undefined;
++                  if (selectedGroup) {
++                    const representativeUserId = selectedGroup.originalUsers[0].id;
++                    configuredStoreIds = availableStores
++                      .filter(s => configuredUsersPerStore?.[s.id]?.includes(representativeUserId))
++                      .map(s => s.id);
++                  }
++                  // @ts-ignore
++                  handleEditWorkflowConfigSubmit(isStoreSpecific, configuredStoreIds, selectedGroup?.originalUsers);
++                }}
++                disabled={targetUsers.length > 1 && !selectedGroupId}
++              >
+                 {!isStoreSpecific || modifyWorkflowStores.length > 0 ? "Edit Workflow Config" : "Done"}
+               </Button>
+             </div>
+@@ -262,5 +379,10 @@ export const ModifyWorkflowModal: React.FC<ModifyWorkflowModalProps> = ({
+         </Tabs>
+       </DialogContent>
+     </Dialog>
++    <ViewUsersListModal
++      viewUsersList={viewUsersList}
++      setViewUsersList={setViewUsersList}
++    />
++    </>
+   );
+ };
+

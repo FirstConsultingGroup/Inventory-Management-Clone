@@ -1,0 +1,266 @@
+﻿import React, { useState, useEffect } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
+import { Trash2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import LocationsAndStoresTab from '../LocationsAndStoresTab';
+import { supabase } from '@/Utils/types/supabaseClient';
+
+export interface ModifyWorkflowModalProps {
+  showModifyWorkflowModal: boolean;
+  setShowModifyWorkflowModal: (show: boolean) => void;
+  modifyWorkflowAction: any;
+  availableStores: any[];
+  companyId: string | null;
+  users: any[];
+  onStoreAccessSaved?: () => void;
+  selectedRoles: string[];
+  filterUser: string;
+  NONE: string;
+  storeScopeLevels: Record<string, string[]>;
+  modifyWorkflowStores: string[];
+  setModifyWorkflowStores: (stores: string[]) => void;
+  partiallyConfiguredStores?: Record<string, { configuredCount: number, totalCount: number }>;
+  setPartiallyConfiguredStores?: (stores: Record<string, { configuredCount: number, totalCount: number }>) => void;
+  setStoreToDelete: (store: any) => void;
+  setActionToDelete: (action: any) => void;
+  handleEditWorkflowConfigSubmit: (isStoreSpecific?: boolean) => void;
+}
+
+export const ModifyWorkflowModal: React.FC<ModifyWorkflowModalProps> = ({
+  showModifyWorkflowModal,
+  setShowModifyWorkflowModal,
+  modifyWorkflowAction,
+  availableStores,
+  companyId,
+  users,
+  onStoreAccessSaved,
+  selectedRoles,
+  filterUser,
+  NONE,
+  storeScopeLevels,
+  modifyWorkflowStores,
+  setModifyWorkflowStores,
+  partiallyConfiguredStores,
+  setPartiallyConfiguredStores,
+  setStoreToDelete,
+  setActionToDelete,
+  handleEditWorkflowConfigSubmit
+}) => {
+  const [isStoreSpecific, setIsStoreSpecific] = useState<boolean>(true);
+
+  useEffect(() => {
+    const fetchModuleInfo = async () => {
+      if (modifyWorkflowAction?.moduleId) {
+        try {
+          const { data, error } = await supabase
+            .from("main_modules")
+            .select("is_store_specific")
+            .eq("id", modifyWorkflowAction.moduleId)
+            .single();
+          if (data && data.is_store_specific !== null) {
+            setIsStoreSpecific(data.is_store_specific);
+          }
+        } catch (err) {
+          console.error("Error fetching module info:", err);
+        }
+      }
+    };
+    fetchModuleInfo();
+  }, [modifyWorkflowAction]);
+
+  return (
+    <Dialog open={showModifyWorkflowModal} onOpenChange={setShowModifyWorkflowModal}>
+      <DialogContent className="sm:max-w-4xl rounded-2xl border-0 p-0 overflow-hidden">
+        <DialogHeader className="px-6 py-5 border-b bg-white flex flex-row items-center justify-between">
+          <DialogTitle className="text-lg text-blue-700 font-semibold">
+            Modify the action workflow approval
+          </DialogTitle>
+        </DialogHeader>
+
+        <Tabs defaultValue="workflow" className="w-full">
+          <div className="px-6 py-2 border-b bg-slate-50">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="storeAccess">Store Access</TabsTrigger>
+              <TabsTrigger value="workflow">Workflow Config</TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent value="storeAccess" className="m-0 border-0 p-0 outline-none">
+            <div className="p-6 bg-[#fafafa] max-h-[60vh] overflow-y-auto">
+              <LocationsAndStoresTab
+                companyId={companyId}
+                selectedRoles={selectedRoles}
+                filterUser={filterUser}
+                users={modifyWorkflowAction?.groupUsers || users}
+                isGroupView={!!(modifyWorkflowAction?.groupUsers && modifyWorkflowAction.groupUsers.length > 0)}
+                onSaveSuccess={onStoreAccessSaved}
+              />
+            </div>
+            <div className="px-6 py-4 bg-white border-t flex justify-end shadow-sm relative z-10">
+              <Button variant="outline" className="rounded-xl px-6" onClick={() => setShowModifyWorkflowModal(false)}>
+                Close
+              </Button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="workflow" className="m-0 border-0 p-0 outline-none">
+            <div className="p-6 bg-[#fafafa] max-h-[60vh] overflow-y-auto">
+              {isStoreSpecific ? (
+                <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-slate-50">
+                      <TableRow>
+                        <TableHead className="w-[200px]">Action</TableHead>
+                        <TableHead>Workflow Configured Stores</TableHead>
+                        <TableHead className="w-[80px] text-center"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {modifyWorkflowAction && (
+                        <TableRow>
+                          <TableCell className="font-medium text-slate-900 border-r bg-slate-50/50">
+                            {modifyWorkflowAction.actionName}
+                          </TableCell>
+                          <TableCell className="whitespace-normal min-w-[300px]">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 py-2 w-full">
+                              {availableStores.map((store) => (
+                                <div key={store.id} className="flex items-start w-full">
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex items-start space-x-3 w-full">
+                                          {(() => {
+                                            const isSingleUser = selectedRoles.length === 1 && filterUser && filterUser !== NONE;
+                                            const isAllUsersInRole = selectedRoles.length === 1 && (!filterUser || filterUser === NONE);
+                                            const isGroupView = !!(modifyWorkflowAction && modifyWorkflowAction.groupUsers && modifyWorkflowAction.groupUsers.length > 0);
+                                            const isInherited = (isSingleUser && (storeScopeLevels[store.id]?.includes('Global') || storeScopeLevels[store.id]?.includes('Role'))) ||
+                                              (isGroupView && (storeScopeLevels[store.id]?.includes('Global') || storeScopeLevels[store.id]?.includes('Role'))) ||
+                                              (!isGroupView && isAllUsersInRole && storeScopeLevels[store.id]?.includes('Global'));
+                                            const isReallyDisabled = store.isDisabled && !modifyWorkflowStores.includes(store.id);
+                                            const isCheckboxDisabled = isReallyDisabled || isInherited;
+
+                                            const isPartiallyConfigured = !!(partiallyConfiguredStores && partiallyConfiguredStores[store.id]);
+                                            const isChecked = modifyWorkflowStores.includes(store.id);
+                                            const checkState = isChecked ? true : (isPartiallyConfigured ? "indeterminate" : false);
+
+                                            return (
+                                              <>
+                                                <Checkbox
+                                                  id={`store-${store.id}`}
+                                                  checked={checkState}
+                                                  disabled={isCheckboxDisabled}
+                                                  className={`mt-0.5 flex-shrink-0 ${isCheckboxDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                  onCheckedChange={(checked) => {
+                                                    if (checked === true || checked === "indeterminate") {
+                                                      setModifyWorkflowStores([...modifyWorkflowStores, store.id]);
+                                                    } else {
+                                                      if (storeScopeLevels[store.id] && storeScopeLevels[store.id].length > 0) {
+                                                        setStoreToDelete({ id: store.id, label: store.label });
+                                                      } else {
+                                                        setModifyWorkflowStores(modifyWorkflowStores.filter(id => id !== store.id));
+                                                      }
+                                                    }
+                                                  }}
+                                                />
+                                                <label
+                                                  htmlFor={`store-${store.id}`}
+                                                  className={`text-sm font-medium leading-snug cursor-pointer whitespace-normal break-words flex-1 flex items-center gap-1.5 ${isCheckboxDisabled ? 'text-slate-400' : 'text-slate-700'}`}
+                                                >
+                                                  <span>{store.label}</span>
+                                                  {isPartiallyConfigured && partiallyConfiguredStores && (
+                                                    <TooltipProvider>
+                                                      <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                          <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-md font-medium cursor-help whitespace-nowrap">
+                                                            ({partiallyConfiguredStores[store.id].configuredCount}/{partiallyConfiguredStores[store.id].totalCount} users)
+                                                          </span>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>
+                                                          <p className="max-w-[200px] whitespace-normal">This workflow is configured for a subset of users. Checking this will apply it to all users.</p>
+                                                        </TooltipContent>
+                                                      </Tooltip>
+                                                    </TooltipProvider>
+                                                  )}
+                                                </label>
+                                              </>
+                                            );
+                                          })()}
+                                        </div>
+                                      </TooltipTrigger>
+                                      {store.isDisabled && !modifyWorkflowStores.includes(store.id) && (
+                                        <TooltipContent>
+                                          <p>The selected users do not have access to this store.</p>
+                                        </TooltipContent>
+                                      )}
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                </div>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center align-top pt-5">
+                            {modifyWorkflowStores.length > 0 && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                      onClick={() => setActionToDelete({
+                                        actionName: modifyWorkflowAction.actionName,
+                                        moduleId: modifyWorkflowAction.moduleId,
+                                        actionId: modifyWorkflowAction.actionId
+                                      })}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Delete all workflows for this action</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (() => {
+                const userCount = modifyWorkflowAction?.groupUsers?.length || (filterUser && filterUser !== NONE && filterUser !== '__none__' ? 1 : users.length);
+                return (
+                  <div className="bg-white rounded-xl shadow-sm border p-8 text-center flex flex-col items-center justify-center">
+                    <p className="text-slate-600 mb-4 leading-relaxed">
+                      The approval workflow for the action <strong>"{modifyWorkflowAction?.actionName}"</strong> is currently configured and applies to <strong>{userCount} {userCount === 1 ? 'user' : 'users'}</strong>.
+                      Any modifications made to this configuration will be applied to {userCount === 1 ? 'this user' : 'all these users'}.
+                    </p>
+                    <p className="text-slate-800 font-medium">
+                      Would you like to proceed and edit this workflow configuration?
+                    </p>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="px-6 py-4 bg-white border-t flex justify-end gap-3 shadow-sm relative z-10">
+              <Button variant="outline" className="rounded-xl px-6" onClick={() => setShowModifyWorkflowModal(false)}>
+                Cancel
+              </Button>
+              <Button className="bg-blue-600 hover:bg-blue-700 rounded-xl px-6 text-white" onClick={() => {
+                handleEditWorkflowConfigSubmit(isStoreSpecific);
+              }}>
+                {!isStoreSpecific || modifyWorkflowStores.length > 0 ? "Edit Workflow Config" : "Done"}
+              </Button>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
+  );
+};
