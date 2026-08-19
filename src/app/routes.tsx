@@ -65,6 +65,7 @@ import { AddModule } from '@/pages/ModuleManagement/AddModule';
 import { elements } from 'chart.js';
 import ApprovalProcess from '@/pages/ApprovalProcess/ApprovalProcess';
 import ApprovalHistory from '@/pages/ApprovalProcess/ApprovalHistory';
+import { ModuleAccess } from '@/pages/ModuleAndAccess/ModuleAccess';
 
 // Define routes with their corresponding ModuleKey for permission checks
 const protectedRoutes = [
@@ -517,6 +518,11 @@ const protectedRoutes = [
     element: <LocationForm />,
     module: 'Location Master' as ModuleKey,
     action: 'View',
+  },
+  {
+    path: 'module-access',
+    element: <ModuleAccess />,
+    module: 'Module and Access' as ModuleKey,
   },
   {
     path: 'module-management',

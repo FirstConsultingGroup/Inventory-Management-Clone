@@ -367,6 +367,7 @@ export const DashboardLayout: React.FC = () => {
     'Role Management': <ShieldCheck className="mr-3 h-4 w-4 flex-shrink-0" />,
     'Item Configurator': <LayoutTemplate className="mr-3 h-4 w-4 flex-shrink-0" />,
     'Item Master': <Package className="mr-3 h-4 w-4 flex-shrink-0" />,
+    'Module And Access': <ShieldCheck className="mr-3 h-4 w-4 flex-shrink-0" />,
     'Inventory Management': <Package className="mr-3 h-4 w-4 flex-shrink-0" />,
     'Supplier Management': <Truck className="mr-3 h-4 w-4 flex-shrink-0" />,
     'Store Management': <Store className="mr-3 h-4 w-4 flex-shrink-0" />,
@@ -393,7 +394,7 @@ export const DashboardLayout: React.FC = () => {
       const dynamicSections = groupedModulesData.map((parentModule: any) => ({
         title: parentModule.name || parentModule.moduleName || 'Other',
         items: (parentModule.modules || [])
-          .filter((mod: any) => !['Module and Access', 'Workflow Configuration', 'Purchase Order Management', 'Purchase Order Approvals', 'Quotations'].includes(mod.moduleKey) && !['Module & Access', 'Workflow Management', 'Purchase Orders', 'Quotations', 'Purchase Order Approvals'].includes(mod.moduleName))
+          .filter((mod: any) => !['Workflow Configuration', 'Purchase Order Management', 'Purchase Order Approvals', 'Quotations'].includes(mod.moduleKey) && !['Workflow Management', 'Purchase Orders', 'Quotations', 'Purchase Order Approvals'].includes(mod.moduleName))
           .map((mod: any) => ({
           path: mod.moduleRoute,
           label: mod.moduleName,
