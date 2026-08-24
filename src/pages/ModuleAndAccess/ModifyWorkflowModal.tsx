@@ -1,11 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/Utils/types/supabaseClient";
-import { ChevronDown, ChevronRight, ChevronUp, Save, Settings, Trash, Trash2 } from "lucide-react";
-import { use, useEffect, useState } from "react";
+import { CommandLoading } from "cmdk";
+import { AlertTriangle, ChevronDown, ChevronRight, ChevronUp, Save, Settings, Trash, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { object } from "zod";
 
 interface ModifyWorkflowModalProps {
     open: boolean;
@@ -33,9 +35,15 @@ export const ModifyWorkflowModal = ({
     const [stores, setStores] = useState<any[]>([]);
     const [locationsAndStores, setLocationAndStores] = useState([]);
     const [expandedLocations, setExpandedLocations] = useState<Set<number>>();
+    const [expandedGroups, setExpandedGroups] = useState<Set<number>>();
 
     const [permittedStores, setPermittedStores] = useState<string[]>([]);
     const [permittedLocations, setPermittedLocations] = useState<string[]>([]);
+    const [userLocations, setUserLocations] = useState<string[]>([]);
+    const [selectedWorkflowGroup, setSelectedWorkflowGroup] = useState<any[]>([]);
+    const [showWorkflowUsersModal, setShowWorkflowUsersModal]=useState(false);
+    const [groupedWorkflowUsers,setGroupedWorkflowUsers]=useState([]);
+    const [showDeleteModal, setShowDeleteModal]=useState(false);
 
 
     useEffect(() => {
@@ -48,6 +56,24 @@ export const ModifyWorkflowModal = ({
         const fetchLocationsAndStores = async () => {
 
             try {
+                const groupedUserIds = groupedUsers.flatMap(u => u.id);
+
+                const { data: userLocation, error: userLocationError } = await supabase
+                    .from('user_mgmt')
+                    .select('locations')
+                    .in('id', groupedUserIds);
+
+                if (userLocationError) throw userLocationError;
+
+                if (userLocation) {
+                    const mappedLoc = userLocation.map(item => item.locations)
+                    const matchingLocations = mappedLoc.reduce((commonItems, currentArray) => {
+                        const currentSet = new Set(currentArray);
+                        return commonItems?.filter(item => currentSet.has(item))
+                    })
+                    setUserLocations(matchingLocations)
+                }
+
                 const { data: locations, error: locationsError } = await supabase
                     .from('location_master')
                     .select('id,location_name')
@@ -93,12 +119,33 @@ export const ModifyWorkflowModal = ({
             const hasPermittedStores = loc.stores.filter(store => PermittedStores?.includes(store.id))
             if (hasPermittedStores.length > 0) {
                 PermittedLocations.push(loc.id)
+            } else if (userLocations.includes(loc.id)) {
+                PermittedLocations.push(loc.id)
             }
         }
 
         setPermittedLocations(PermittedLocations)
 
-    }, [locationsAndStores, groupedUsers])
+    }, [locationsAndStores, groupedUsers]);
+
+    let groupedWorkflow: any[] = [];
+    if (data?.workflow?.length > 0) {
+
+        const workflowData = data?.workflow.filter(w => w.level === 1);
+
+        for (const workflow of workflowData) {
+            const storeIds: [] = workflow.stores.map(store => store.id || store);
+            const existingGroup: boolean = groupedWorkflow.find(item => {
+                if (item.stores.length !== storeIds.length) return false;
+                return item.stores.every((store, index) => store === storeIds[index])
+            });
+            if (existingGroup) {
+                existingGroup.assigned_to.push(workflow.assigned_to)
+            } else {
+                groupedWorkflow.push({ stores: storeIds, assigned_to: [workflow.assigned_to] })
+            }
+        }
+    }
 
     function toggleLocationAccess(loc: object) {
         setPermittedLocations(prev => {
@@ -124,6 +171,15 @@ export const ModifyWorkflowModal = ({
         })
     }
 
+    function handleSetSelectedGroup(workflow:object,index :number){
+        console.log('workflow set',[workflow,index])
+        if(selectedWorkflowGroup.includes(index)){
+            setSelectedWorkflowGroup([]);
+        } else {
+            setSelectedWorkflowGroup([workflow,index]);           
+        }
+    }
+
     function toggleStoreAccess(storeId: string) {
         setPermittedStores((prev) => {
             const prevPermittedStores = new Set(prev);
@@ -137,6 +193,20 @@ export const ModifyWorkflowModal = ({
             return Array.from(prevPermittedStores)
         })
 
+    }
+
+    function toggleExpandedGroups(index: number) {
+        setExpandedGroups(prev => {
+            const expandedIndexes = new Set(prev);
+
+            if (expandedIndexes.has(index)) {
+                expandedIndexes.delete(index)
+            } else {
+                expandedIndexes.add(index)
+            }
+
+            return expandedIndexes;
+        })
     }
 
     function toggleExpandedLocation(index: number) {
@@ -163,7 +233,7 @@ export const ModifyWorkflowModal = ({
     }
 
     return (
-
+<>
         <Dialog open={open} onOpenChange={(open) => {
             if (!open) {
                 setExpandedLocations(new Set());
@@ -204,7 +274,7 @@ export const ModifyWorkflowModal = ({
                         </div>
                     </div>
                     {viewWorkflow ? (
-                        <div className="p-6 bg-gray-50">
+                        <div className="p-6 bg-gray-50 max-h-[52vh] overflow-y-auto">
                             {data.is_store_specific ? (
                                 <div className="bg-white border shadow rounded-lg overflow-hidden">
                                     <div className="grid grid-cols-[25%_75%] bg-slate-50 py-2 px-3 font-semibold text-sm border-b hover:bg-gray-100 transition-colors duration-200">
@@ -215,38 +285,131 @@ export const ModifyWorkflowModal = ({
                                         <span className="flex justify-start items-center">
                                             <label className="font-semibold text-sm">{data.module_name}{' '}-{' '}{data.actionName}</label>
                                         </span>
-                                        <div className="grid grid-cols-2 gap-1 flex-wrap">
-                                            {stores.map((store: string) => {
-                                                const alreadyConfiguredStores = data?.workflow[0].stores
-                                                const configuredStore = alreadyConfiguredStores.filter(s => s.id === store.id);
-                                                const isConfiguredStore = configuredStore.length > 0;
-                                                const hasStoreAccess = permittedStores?.includes(store.id);
+                                        <div>
+                                            {groupedUsers.length > 1 ? (
+                                                <Table>
+                                                    <TableBody>
 
-                                                return (
-                                                    <div key={store.id}>
-                                                        <Tooltip>
-                                                            <TooltipTrigger asChild>
-                                                                <span className="flex justify-start items-center font-semibold gap-2 p-1">
-                                                                <Checkbox
-                                                                    checked={isConfiguredStore}
-                                                                    disabled={!hasStoreAccess && !isConfiguredStore}
-                                                                />
-                                                                <span className={`text-sm ${hasStoreAccess ? '' : 'text-gray-400'}`}>{store.name}</span>
-                                                                </span>
-                                                            </TooltipTrigger>
-                                                            {!hasStoreAccess && 
-                                                            <TooltipContent>The {groupedUsers.length > 1 ? 'group of users' : 'user'} doesn't have access on this store. </TooltipContent>
-                                                            }
-                                                        </Tooltip>
+                                                        {groupedWorkflow.map((workflow, index) => {
+                                                            const isExpanded = expandedGroups?.has(index);
+                                                            const isSelected = selectedWorkflowGroup?.includes(index);
+                                                            const assignedUsers = groupedUsers.filter(user => workflow.assigned_to.includes(user.id)).map((u) => u);
+                                                            const multipleUserCount = assignedUsers.length > 2;
+                                                            return (
+                                                                    <TableRow>
+                                                                        <div key={index}
+                                                                            onClick={() => {
+                                                                                toggleExpandedGroups(index)
+                                                                            }} className="flex justify-between items-center p-2">
+                                                                            <div className="flex items-center gap-3">
+                                                                                <Checkbox
+                                                                                checked={isSelected}
+                                                                                onClick={(e)=>e.stopPropagation()}
+                                                                                onCheckedChange={()=>handleSetSelectedGroup(workflow,index)}
+                                                                                className="shadow data-[state=checked]:bg-blue-500 data-[state=checked]:text-white data-[state=checked]:border-blue-500" />
+                                                                                <span className="flex flex-col justify-start items-start">
+                                                                                    <label className="font-semibold text-sm text-gray-800">{multipleUserCount ?
+                                                                                       <span>{assignedUsers.slice(0,2).map((u) => (u.first_name + (' ') + u.last_name)).join(', ')} + {assignedUsers.slice(2).length} more</span>  : 
+                                                                                       <span>{assignedUsers.map((u) => (u.first_name + (' ') + u.last_name)).join(', ')}</span>
+                                                                                    }
+                                                                                    </label>
+                                                                                    {multipleUserCount ? 
+                                                                                    <span
+                                                                                    onClick={(e)=>{
+                                                                                        e.stopPropagation();
+                                                                                        setShowWorkflowUsersModal(true);
+                                                                                        setGroupedWorkflowUsers(assignedUsers);
+                                                                                    }}
+                                                                                     className="text-blue-600 hover:text-blue-700 text-xs font-semibold cursor-pointer">{assignedUsers.length} users in this group</span>
+                                                                                    :
+                                                                                    <span className="text-gray-500 text-xs">{assignedUsers.map((u) => u.email).join(', ')}</span>                                                                          
+                                                        }
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-3">
+                                                                                <span className="bg-blue-50 text-blue-600 rounded-xl py-1 px-2 text-xs font-semibold cursor-pointer">{workflow.stores?.length} / {permittedStores?.length} stores</span>
+                                                                                {isExpanded ? (
+                                                                                    <ChevronUp size={16} className="text-gray-400" />
+                                                                                ) : (
+                                                                                    <ChevronDown size={16} className="text-gray-400" />
+                                                                                )}
 
-                                                    </div>
-                                                )
-                                            })}
+                                                                            </div>
+                                                                        </div>
+                                                                    {isExpanded &&
+                                                                        <div className="grid grid-cols-2 gap-1 flex-wrap p-2">
+                                                    {stores.map((store: string) => {
+                                                        const alreadyConfiguredStores = workflow.stores;
+
+                                                        const configuredStore = alreadyConfiguredStores.filter(s => s === store.id);
+                                                        const isConfiguredStore = configuredStore.length > 0;
+                                                        const hasStoreAccess = permittedStores?.includes(store.id);
+
+                                                        return (
+                                                            <div key={store.id}>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <span className="flex justify-start items-center font-semibold gap-2 p-1">
+                                                                            <Checkbox
+                                                                                checked={isConfiguredStore}
+                                                                                disabled={!hasStoreAccess && !isConfiguredStore}
+                                                                            />
+                                                                            <span className={`text-sm ${hasStoreAccess ? '' : 'text-gray-400'}`}>{store.name}</span>
+                                                                        </span>
+                                                                    </TooltipTrigger>
+                                                                    {!hasStoreAccess &&
+                                                                        <TooltipContent>The {groupedUsers.length > 1 ? 'group of users' : 'user'} doesn't have access on this store. </TooltipContent>
+                                                                    }
+                                                                </Tooltip>
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                                                    }
+                                                                    </TableRow>
+                                                            )
+                                                        })}
+                                                    </TableBody>
+                                                </Table>
+
+
+                                            ) : (
+                                                <div className="grid grid-cols-2 gap-1 flex-wrap">
+                                                    {stores.map((store: string) => {
+                                                        const alreadyConfiguredStores = data?.workflow[0].stores;
+
+                                                        const configuredStore = alreadyConfiguredStores.filter(s => s.id === store.id);
+                                                        const isConfiguredStore = configuredStore.length > 0;
+                                                        const hasStoreAccess = permittedStores?.includes(store.id);
+
+                                                        return (
+                                                            <div key={store.id}>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <span className="flex justify-start items-center font-semibold gap-2 p-1">
+                                                                            <Checkbox
+                                                                                checked={isConfiguredStore}
+                                                                                disabled={!hasStoreAccess && !isConfiguredStore}
+                                                                            />
+                                                                            <span className={`text-sm ${hasStoreAccess ? '' : 'text-gray-400'}`}>{store.name}</span>
+                                                                        </span>
+                                                                    </TooltipTrigger>
+                                                                    {!hasStoreAccess &&
+                                                                        <TooltipContent>The {groupedUsers.length > 1 ? 'group of users' : 'user'} doesn't have access on this store. </TooltipContent>
+                                                                    }
+                                                                </Tooltip>
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            )
+                                            }
                                         </div>
                                         <span className="flex items-center justify-end">
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
-                                                    <Trash2 className="text-red-500 h-8 w-8 p-2 hover:bg-red-50 hover:text-red-600 rounded-full" />
+                                                    <Trash2 
+                                                    onClick={()=>setShowDeleteModal(true)} className="text-red-500 h-8 w-8 p-2 hover:bg-red-50 hover:text-red-600 rounded-full" />
                                                 </TooltipTrigger>
                                                 <TooltipContent>Delete all workflows for this action</TooltipContent>
                                             </Tooltip>
@@ -294,10 +457,11 @@ export const ModifyWorkflowModal = ({
                                                                 toggleExpandedLocation(index)
                                                             }} className=" flex justify-between items-center gap-2 px-3 py-2 text-gray-800">
                                                                 <div className="flex items-center gap-3">
-                                                                    <div onClick={(e) => e.preventDefault()} className="mx-1">
+                                                                    <div className="mx-1">
 
                                                                         <Checkbox
                                                                             checked={hasLocationAccess}
+                                                                            onClick={(e)=>e.stopPropagation()}
                                                                             onCheckedChange={() => toggleLocationAccess(loc)}
                                                                         />
                                                                     </div>
@@ -363,7 +527,9 @@ export const ModifyWorkflowModal = ({
                             Close
                         </Button>
                         {viewWorkflow &&
-                            <Button className="py-4 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 transition-colors duration-200 text-white">
+                            <Button
+                            disabled={selectedWorkflowGroup.length === 0}
+                            className="py-4 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 transition-colors duration-200 text-white">
                                 Edit Workflow Config
                             </Button>
                         }
@@ -372,6 +538,69 @@ export const ModifyWorkflowModal = ({
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+
+<Dialog open={showWorkflowUsersModal} onOpenChange={() => {
+                setShowWorkflowUsersModal(false);
+                setGroupedWorkflowUsers([]);
+        }}>
+          <DialogContent className="w-md rounded-xl bg-slate-50">
+                <DialogHeader className="">
+                    <DialogTitle className="text-blue-700">
+                        Group Users ({groupedWorkflowUsers.length})
+                    </DialogTitle>
+                    <DialogDescription>These users share identical workflow configurations.</DialogDescription>
+                </DialogHeader>
+                <div className="flex flex-col gap-3">
+                    {groupedWorkflowUsers.length > 0 && 
+                    groupedWorkflowUsers.map(user => 
+                        <div className="flex items-center gap-3 p-3 shadow border rounded-xl">
+                            <span className="w-9 h-8 rounded-full p-4 bg-blue-100 flex items-center justify-center text-blue-600 font-medium">
+                                            {user.first_name?.[0]}{user.last_name?.[0]}
+                            </span>
+                            <div className="flex flex-col justify-start">
+                                <span className="font-semibold">{user.first_name}{' '}{user.last_name}</span>
+                                <span className="text-sm text-gray-500">{user.email}</span>
+                             </div>
+                        </div>
+                    )}
+                </div>
+                </DialogContent>  
+</Dialog>
+
+<Dialog open={showDeleteModal} onOpenChange={() => {
+                setShowDeleteModal(false);
+        }}>
+          <DialogContent className="w-md rounded-xl bg-slate-50">
+                <DialogHeader className="">
+                    <DialogTitle className="text-red-600">
+                        <span className="flex items-center gap-3">
+                            <AlertTriangle/>
+                            <label>Remove Action Workflow</label>
+                        </span>
+                    </DialogTitle>
+                </DialogHeader>
+                <div className="p-1">
+                   <p className="text-gray-700">Are you sure you want to permanently delete all workflow configurations for{' '}
+                    <label className="font-bold">{data.module_name}{' '}-{' '}{data.actionName}?</label>
+                   </p>
+                   <p className="text-sm text-gray-500 mt-1">This will remove the workflow setup across all stores for this action. This cannot be undone.</p>
+                </div>
+                <DialogFooter className="mt-2">
+                    <div className="flex justify-end gap-2">
+                        <Button className="py-4 px-5 rounded-xl" variant="outline" onClick={() => {
+                            setShowDeleteModal(false);
+                        }}>
+                            Cancel
+                        </Button>
+                            <Button
+                            variant="destructive">
+                                Delete All Workflows
+                            </Button>
+                    </div>
+                </DialogFooter>
+                </DialogContent>  
+</Dialog>
+</>
 
     )
 }
