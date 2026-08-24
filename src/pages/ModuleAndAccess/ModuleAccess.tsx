@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ManageWorkflowModal } from "./ManageWorkflowModal";
+import { ModifyWorkflowModal } from "./ModifyWorkflowModal";
 
 
 export const ModuleAccess = () => {
@@ -40,18 +41,22 @@ export const ModuleAccess = () => {
 
     const [groupedSections, setGroupedSections] = useState<any[]>([]);
     const [expandedGroup, setExpandedGroup] = useState<Set<number>>(new Set([0]));
-
     const [expandedParents, setExpandedParents] = useState<Set<string>>();
     const [expandedModules, setExpandedModules] = useState<Set<string>>();
+
     const [showUsersModal, setShowUsersModal] = useState(false);
     const [singleActionModal, setSingleActionModal] = useState(false);
     const [multipleActionModal, setMultipleActionModal] = useState(false);
     const [manageWorkflowModal, setManageWorkflowModal] = useState(false);
+    const [modifyWorkflowModal, setModifyWorkflowModal] = useState(false);
+    const [workflowConfigData,setWorkflowConfigData] = useState<any[]>([]);
     const [groupedUsers, setGroupedUsers] = useState<any[]>([]);
     const [loadPermission, setLoadPermission] = useState<boolean>(false);
     const [selectedAction, setSelectedAction] = useState();
     const [selectedMultipleActions, setSelectedMultipleActions] = useState([]);
     const [manageWorkflowData, setManageWorkflowData] = useState({});
+    const [workflowConfigActions, setWorkflowConfigActions] = useState([]);
+    const [modifyWorkflowData, setModifyWorkflowData] = useState({});
     const [loading, setLoading] = useState(false);
 
 
@@ -60,12 +65,11 @@ export const ModuleAccess = () => {
             try {
                 const { data: parentModules, error } = await supabase
                     .from('parent_modules')
-                    .select()
+                    .select('*')
                     .order('parent_order');
 
                 if (error) throw error;
 
-                console.log("parent modules", parentModules)
                 setParentModules(parentModules);
             } catch (error) {
                 console.log("Error fetching parent modules", error)
@@ -76,7 +80,7 @@ export const ModuleAccess = () => {
             try {
                 let query = supabase
                     .from('main_modules')
-                    .select()
+                    .select('*')
                     .order('module_order');
 
                 if (parentId !== "all") {
@@ -86,8 +90,6 @@ export const ModuleAccess = () => {
                 const { data: modules, error } = await query;
 
                 if (error) throw error;
-
-                console.log("modules", modules)
 
                 let moduleData = [];
                 for (const m of modules) {
@@ -104,11 +106,9 @@ export const ModuleAccess = () => {
                         if (data) {
                             selectedSubModules = data;
                         }
-                        console.log('selectedSubModules', selectedSubModules)
                     }
                     moduleData.push({ ...m, selected_submodules: selectedSubModules })
                 }
-                console.log('moduleData', moduleData)
                 setModules(moduleData);
             } catch (error) {
                 console.log("Error fetching modules", error)
@@ -125,7 +125,7 @@ export const ModuleAccess = () => {
             try {
                 let query = supabase
                     .from('role_master')
-                    .select()
+                    .select('*')
                     .eq('is_active', true)
                     .eq('company_id', companyId);
 
@@ -137,7 +137,6 @@ export const ModuleAccess = () => {
 
                 if (error) throw error;
 
-                console.log("roles", roles)
                 setRoles(roles);
             } catch (error) {
                 console.log("Error fetching roles", error)
@@ -153,7 +152,7 @@ export const ModuleAccess = () => {
             try {
                 let query = supabase
                     .from('user_mgmt')
-                    .select()
+                    .select('*')
                     .eq('is_active', true)
                     .eq('company_id', companyId);
 
@@ -168,7 +167,6 @@ export const ModuleAccess = () => {
 
                 if (error) throw error;
 
-                console.log("users", users)
                 setUsers(users);
             } catch (error) {
                 console.log("Error fetching users", error)
@@ -180,7 +178,6 @@ export const ModuleAccess = () => {
     }, [roleId, userName])
 
     useEffect(() => {
-        console.log('fetchActions')
         const fetchActions = async () => {
             try {
                 const { data: actions, error } = await supabase
@@ -189,7 +186,6 @@ export const ModuleAccess = () => {
 
                 if (error) throw error;
 
-                console.log("actions ", actions)
                 setActions(actions);
             } catch (error) {
                 console.log("Error fetching parent modules", error)
@@ -199,6 +195,43 @@ export const ModuleAccess = () => {
         fetchActions();
 
     }, [])
+
+    useEffect(() => {
+
+        const fetchWorkflowConfig = async()=>{
+            if(!roleId) return;
+            try {
+               let query = supabase
+               .from('workflow_config')
+               .select('*')
+               .eq('is_active', true)
+               .eq('company_id',companyId);
+    
+               const userIds= users.flatMap(u => u.id);
+
+               if(userId == 'all'){  
+                query = query.in('assigned_to', userIds)
+            }else{
+                   query = query.eq('assigned_to', userId)
+               }
+    
+               const {data, error} = await query;
+
+               if(error) throw error;
+
+               if(data){
+                setWorkflowConfigData(data);
+               }
+    
+                
+            } catch (error) {
+                console.log("Error fetching workflow Data",error)
+            }
+        }
+        fetchWorkflowConfig();
+      
+    }, [roleId,userId,groupedSections])
+    
 
 
     useEffect(() => {
@@ -254,7 +287,6 @@ export const ModuleAccess = () => {
             setExpandedGroup(new Set([0]));
             setExpandedParents(new Set());
             setExpandedModules(new Set());
-            console.log("filteredTree", filteredTree)
             setLoadPermission(false)
             setTimeout(() => {
                 setLoading(false)
@@ -565,7 +597,7 @@ export const ModuleAccess = () => {
                                                                 >
                                                                     <CollapsibleTrigger asChild>
                                                                         <div className="flex items-center justify-between p-4 bg-gray-50 border rounded-md">
-                                                                            <div className="flex items-center gap-3">
+                                                                            <div className="flex items-start gap-3">
                                                                                 {multipleUsers ? (
                                                                                     <Users className="h-10 w-10 p-2 text-green-500 bg-green-100 rounded-md" />
                                                                                 ) : (
@@ -581,6 +613,7 @@ export const ModuleAccess = () => {
                                                                                         }} className="text-blue-500 hover:underline hover:text-blue-600">View Users</span>
                                                                                     ) : user.email}</span>
                                                                                 </div>
+                                                                                    <span className="bg-green-100 text-green-700 font-semibold text-xs mt-0.5 px-3 rounded-lg py-1">{grp.users.length}{' '}users</span>
                                                                             </div>
                                                                             <Button variant="ghost" size="icon" className="size-8 ">
                                                                                 {isGroupOpen ? (
@@ -648,10 +681,31 @@ export const ModuleAccess = () => {
                                                                                                                 const modulePermission = permissions.flatMap((module) => module).filter((mod) => mod.module_id === m.id);
                                                                                                                 let permittedActions = [];
                                                                                                                 let permittedSubModules = [];
+                                                                                                                let availableActions=[];
+                                                                                                                let workflowData=[];
                                                                                                                 if (modulePermission.length > 0) {
                                                                                                                     permittedActions = modulePermission[0]?.permissions.map(actions => actions)
+                                                                                                                    const workflowConfiguredData = workflowConfigData.flatMap((workflow)=>workflow).filter((w)=> w.module_id === modulePermission[0]?.module_id)
+                                                                                                                    workflowData = workflowConfiguredData.filter(workflow=> (
+                                                                                                                        grp.users.flatMap((u)=>u.id).includes(workflow.assigned_to)
+                                                                                                                    ))
                                                                                                                     if(modulePermission[0]?.submodule_permissions){
                                                                                                                         permittedSubModules = modulePermission[0]?.submodule_permissions
+                                                                                                                    }
+                                                                                                                    for (const a of m.available_actions.slice(1)){
+                                                                                                                        const isPermittedAction = permittedActions.flatMap(actions => actions).filter((action) => (action.action_id === a.action_id) && (action.isAllowed))
+                                                                                                                        const isPermitted = isPermittedAction.length > 0;
+                                                                                                                        let workflow =[]; 
+                                                                                                                        if(isPermitted && workflowData.length > 0){
+                                                                                                                        workflow = workflowData.filter((w)=>w.action_id === a.action_id)
+                                                                                                                        }
+                                                                                                                        if(isPermitted && workflow.length > 0){
+                                                                                                                            availableActions.push({...a,isPermitted: true, hasWorkflowConfig: true})
+                                                                                                                        } else if(isPermitted && workflow.length === 0){
+                                                                                                                            availableActions.push({...a,isPermitted: true, hasWorkflowConfig: false})
+                                                                                                                        } else{
+                                                                                                                            availableActions.push({...a,isPermitted: false, hasWorkflowConfig: false})
+                                                                                                                        }
                                                                                                                     }
                                                                                                                 }
 
@@ -772,8 +826,14 @@ export const ModuleAccess = () => {
                                                                                                                                                 {m.available_actions.length > 1 &&
                                                                                                                                                     m.available_actions.slice(1).map((a) => {
                                                                                                                                                         const actionName = actions.filter((action) => action.id === a.action_id).map((item) => item.action_name)
-                                                                                                                                                        const isPermittedAction = permittedActions.flatMap(actions => actions).filter((action) => (action.action_id === a.action_id) && (action.isAllowed))
-                                                                                                                                                        const isPermitted = isPermittedAction.length > 0;
+                                                                                                                                                        
+                                                                                                                                                        const action = availableActions.filter((action)=> action.action_id === a.action_id);
+                                                                                                                                                        const hasWorkflowConfig = action[0]?.hasWorkflowConfig;
+                                                                                                                                                        const isPermitted= action[0]?.isPermitted;
+                                                                                                                                                        let workflow =[]; 
+                                                                                                                                                        if(isPermitted && workflowData.length > 0){
+                                                                                                                                                        workflow = workflowData.filter((w)=>w.action_id === a.action_id)
+                                                                                                                                                        }
 
                                                                                                                                                         return (
                                                                                                                                             <Tooltip>
@@ -791,8 +851,17 @@ export const ModuleAccess = () => {
                                                                                                                                                     }
                                                                                                                                                 }}
                                                                                                                                                 />
-                                                                                                                                                <span className="flex items-center gap-1">
-                                                                                                                                                    <label className={`text-[13px] font-semibold ${isModuleAccessEnabled? 'text-gray-600' : 'text-gray-400'}`}>{actionName}</label>
+                                                                                                                                                <span 
+                                                                                                                                                onClick={()=>{
+                                                                                                                                                    if(isModuleAccessEnabled && hasWorkflowConfig){
+                                                                                                                                                        setModifyWorkflowModal(true);
+                                                                                                                                                        const data ={module_id:m.id,module_name: m.module_name,is_store_specific: m.is_store_specific, action_id: a.action_id, actionName:actionName,workflow:workflow}
+                                                                                                                                                        setModifyWorkflowData(data);
+                                                                                                                                                        setGroupedUsers(grp?.users);
+                                                                                                                                                    }
+                                                                                                                                                }}
+                                                                                                                                                 className="flex items-center gap-1">
+                                                                                                                                                    <label className={`text-[13px] font-semibold ${isModuleAccessEnabled && hasWorkflowConfig? 'text-green-600 hover:text-green-700 transition duration-200 hover:underline': isModuleAccessEnabled? 'text-gray-600' : 'text-gray-400'}`}>{actionName}</label>
                                                                                                                                                     {!isModuleAccessEnabled && (
 
                                                                                                                                                 <AlertCircle className="w-3 h-3 text-gray-400"/>
@@ -812,7 +881,9 @@ export const ModuleAccess = () => {
                                                                                                                                         </div>
                                                                                                                                         <span onClick={()=>{
                                                                                                                                             setManageWorkflowModal(true)
-                                                                                                                                            setManageWorkflowData(m)
+                                                                                                                                            const data = {module_id:m.id, module_name: m.module_name, available_actions: availableActions}
+                                                                                                                                            setManageWorkflowData(data)
+                                                                                                                                            console.log('setManageWorkflowData',data)
                                                                                                                                         }} className="flex items-center justify-end pr-2"><Settings className="h-6 w-6 text-gray-500 p-1 rounded-full hover:bg-blue-100 hover:text-blue-500 transition duration-200" /></span>
                                                                                                                                     </div>
                                                                                                                                 </TableCell>
@@ -821,7 +892,7 @@ export const ModuleAccess = () => {
                                                                                                                     </>
                                                                                                                 )
                                                                                                             })
-                                                                                                        )}
+                                                                                                        )}  
                                                                                                     </>
                                                                                                 )
                                                                                             })
@@ -934,6 +1005,18 @@ export const ModuleAccess = () => {
             open={manageWorkflowModal}
             onClose={() => setManageWorkflowModal(false)}
             manageWorkflowData={manageWorkflowData}
+            workflowConfigActions={workflowConfigActions}
+            set
+            actions={actions}
+            />
+
+            <ModifyWorkflowModal
+            open={modifyWorkflowModal}
+            onClose={() => setModifyWorkflowModal(false)}
+            modifyWorkflowData={modifyWorkflowData}
+            companyId={companyId}
+            groupedUsers={groupedUsers}
+            setGroupedUsers={setGroupedUsers}
             actions={actions}
             />
         </>

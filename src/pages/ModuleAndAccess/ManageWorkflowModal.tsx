@@ -2,7 +2,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Settings } from "lucide-react";
+import { outline } from "@yudiel/react-qr-scanner";
+import { Pencil, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface ManageWorkflowModalProps {
@@ -20,18 +21,36 @@ export const ManageWorkflowModal =({
 }: ManageWorkflowModalProps) => {
 
     const [data,setData]=useState({});
+    const [selectedActions,setSelectedActions] =useState<string[]>([]);
 
     useEffect(() => {
       console.log('manageWorkflowData',manageWorkflowData)
       setData(manageWorkflowData)
     }, [manageWorkflowData])
     
+     function toggleAction(actionId:string) {
+        setSelectedActions(prev => {
+            const prevSelectedActions = new Set(prev);
+
+            if (prevSelectedActions.has(actionId)) {
+                prevSelectedActions.delete(actionId)
+            } else {
+                prevSelectedActions.add(actionId)
+            }
+
+            return Array.from(prevSelectedActions)
+        })
+    }
+
+    const handleConfigureWorkflow = ()=>{
+        console.log('selectedActions',selectedActions)
+    }
 
 
     return(
 
 <Dialog open={open} onOpenChange={onClose}>
-                <DialogContent className="md:max-w-[55vw] lg:max-w-[50vw] p-0 gap-0 rounded-xl bg-gray-50">
+                <DialogContent className="md:max-w-[55vw] p-0 gap-0 rounded-xl bg-gray-50">
                     <DialogHeader className="px-5 py-4 border-b rounded-t-xl border-gray-300 bg-white">
                         <DialogTitle className="text-blue-700 ps-1 my-2">
                             <span className="flex items-center gap-2">
@@ -40,12 +59,13 @@ export const ManageWorkflowModal =({
                             </span>
                         </DialogTitle>
                     </DialogHeader>
-                    <div className="rounded-md shadow border overflow-hidden mx-7 my-9">
+                    <div className="rounded-md shadow border overflow-hidden my-8 mx-6">
                                                                                 <Table>
                                                                                     <TableHeader>
                                                                                         <TableRow className="text-md bg-gray-50">
-                                                                                            <TableHead className="w-[250px]"><span className="ps-3">Module Actions</span></TableHead>
-                                                                                            <TableHead className=" flex-1">Status</TableHead>
+                                                                                            <TableHead className="w-[40px]"/>
+                                                                                            <TableHead className="w-[220px]"><span>Module Actions</span></TableHead>
+                                                                                            <TableHead className=" flex-1"><span className="ps-2">Status</span></TableHead>
                                                                                             <TableHead className=" w-[200px] text-right"><span className="pr-2">Action</span></TableHead>
                                                                                         </TableRow>
                                                                                     </TableHeader>
@@ -53,21 +73,44 @@ export const ManageWorkflowModal =({
                                                                                         {data.available_actions && 
                                                                                         data.available_actions.filter(action=>action.requires_approval).map(a => {
                                                                                         const actionName = actions?.filter((action) => action.id === a.action_id).map(item => item.action_name)
+                                                                                        const hasWorkflowConfig = a.hasWorkflowConfig;
+                                                                                        const isSelected = selectedActions.includes(a.action_id)
 
                                                                                             return(
                                                                                              <TableRow key={a.action_id} className="text-md bg-white">
+                                                                                                <TableCell className="">
+                                                                                                <span className="flex justify-center">
+                                                                                                    {hasWorkflowConfig ? (
+                                                                                                        <span></span>
+                                                                                                    ) : (
+                                                                                                    <Checkbox
+                                                                                                    checked={isSelected}
+                                                                                                    onCheckedChange={()=> toggleAction(a.action_id)}/>
+                                                                                                    )}
+                                                                                                    </span>
+                                                                                            </TableCell>
                                                                                             <TableCell className="">
-                                                                                                <span className="flex items-center gap-3 ps-3">
-                                                                                                    <Checkbox/>
                                                                                                     <label className="font-semibold text-gray-800">{actionName}</label>
-                                                                                                    </span></TableCell>
+                                                                                            </TableCell>
                                                                                             <TableCell className="">
-                                                                                                <span className="text-gray-500 bg-gray-50 rounded-xl py-1 px-3">Not Configured</span>
+                                                                                                <span className={` rounded-xl py-0.5 px-3 ${hasWorkflowConfig ? 'text-green-600 font-semibold text-xs bg-green-100' : 'text-gray-500 text-sm bg-gray-50'}`}>
+                                                                                                   {hasWorkflowConfig ? 'Workflow Configured' : 'Not Configured'}
+                                                                                                   </span>
                                                                                                 </TableCell>
                                                                                             <TableCell className="">
-                                                                                                <span className="flex justify-end items-center py-2 pr-2 text-slate-400  italic">
-                                                                                                    Select to Configure
+                                                                                                <span className="flex justify-end items-center pr-1">
+                                                                                                    
+                                                                                                {hasWorkflowConfig ? (
+                                                                                                    <Button size='sm' variant='outline' className="flex items-center text-sm text-blue-500 border border-blue-200 hover:text-blue-600">
+                                                                                                      <Pencil/>  Edit Workflow
+                                                                                                    </Button>
+                                                                                                ): (
+
+                                                                                                    <span className=" text-slate-400 my-0.5 italic">
+                                                                                                        Select to Configure
                                                                                                     </span>
+                                                                                                )}
+                                                                                                </span>
                                                                                                     </TableCell>
                                                                                         </TableRow>
                                                                                         )})}
@@ -79,7 +122,8 @@ export const ManageWorkflowModal =({
                             <Button className="py-4 px-5 rounded-xl" variant="outline" onClick={() => onClose(open)}>
                                 Close
                             </Button>
-                            <Button className="py-4 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 transition-colors duration-200 text-white">
+                            <Button
+                            onClick={handleConfigureWorkflow} className="py-4 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 transition-colors duration-200 text-white">
                                 Configure Workflow
                             </Button>
 
