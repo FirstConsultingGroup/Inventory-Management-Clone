@@ -4,20 +4,29 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/Utils/types/supabaseClient";
-import { CommandLoading } from "cmdk";
 import { AlertTriangle, ChevronDown, ChevronRight, ChevronUp, Save, Settings, Trash, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { object } from "zod";
+import toast from "react-hot-toast";
 
 interface ModifyWorkflowModalProps {
     open: boolean;
     onClose: (open: boolean) => void;
     modifyWorkflowData: object;
-    groupedUsers: any[];
-    setGroupedUsers: React.Dispatch<React.SetStateAction<any[]>>;
+    groupedUsers: any[] | null;
+    setGroupedUsers: React.Dispatch<React.SetStateAction<any[] | null>>
     companyId: string;
     actions: any[];
 }
+
+interface LocationsAndStoresProps {
+    stores: {
+        id: string;
+        name: string;
+        location_id: string | null;
+    }[];
+    id: string;
+    location_name: string | null;
+}[]
 
 export const ModifyWorkflowModal = ({
     open,
@@ -33,9 +42,10 @@ export const ModifyWorkflowModal = ({
     const [viewStores, setViewStores] = useState(false);
     const [viewWorkflow, setViewWorkflow] = useState(true);
     const [stores, setStores] = useState<any[]>([]);
-    const [locationsAndStores, setLocationAndStores] = useState([]);
+    const [locationsAndStores, setLocationAndStores] = useState<LocationsAndStoresProps[]>([]);
     const [expandedLocations, setExpandedLocations] = useState<Set<number>>();
     const [expandedGroups, setExpandedGroups] = useState<Set<number>>();
+    const [initialPermittedStores, setInitialPermittedStores] = useState<string[]>([]);
 
     const [permittedStores, setPermittedStores] = useState<string[]>([]);
     const [permittedLocations, setPermittedLocations] = useState<string[]>([]);
@@ -51,12 +61,13 @@ export const ModifyWorkflowModal = ({
         setData(modifyWorkflowData)
     }, [modifyWorkflowData])
 
+    const groupedUserIds = groupedUsers.flatMap(u => u.id);
+
     useEffect(() => {
 
         const fetchLocationsAndStores = async () => {
 
             try {
-                const groupedUserIds = groupedUsers.flatMap(u => u.id);
 
                 const { data: userLocation, error: userLocationError } = await supabase
                     .from('user_mgmt')
@@ -64,14 +75,13 @@ export const ModifyWorkflowModal = ({
                     .in('id', groupedUserIds);
 
                 if (userLocationError) throw userLocationError;
-
                 if (userLocation) {
                     const mappedLoc = userLocation.map(item => item.locations)
                     const matchingLocations = mappedLoc.reduce((commonItems, currentArray) => {
                         const currentSet = new Set(currentArray);
-                        return commonItems?.filter(item => currentSet.has(item))
+                        return commonItems.filter((item:any) => currentSet.has(item))
                     })
-                    setUserLocations(matchingLocations)
+                    setUserLocations(matchingLocations as string[])
                 }
 
                 const { data: locations, error: locationsError } = await supabase
@@ -112,6 +122,7 @@ export const ModifyWorkflowModal = ({
 
     useEffect(() => {
         const PermittedStores = groupedUsers[0]?.stores;
+        setInitialPermittedStores(PermittedStores);
         setPermittedStores(PermittedStores);
 
         let PermittedLocations = [];
@@ -225,8 +236,40 @@ export const ModifyWorkflowModal = ({
 
     const handleSaveConfiguration = async () => {
         try {
-            console.log('updated locations', permittedLocations);
-            console.log('updated stores', permittedStores);
+
+            let existsInWorkflow:boolean = false;
+            const removedStores = initialPermittedStores.filter(id => !permittedStores.includes(id));
+            console.log('removedStores',removedStores);
+
+            const {data:stores, error} =await supabase
+            .from('workflow_config')
+            .select('stores')
+            .in('assigned_to',groupedUserIds)
+            .eq('company_id',companyId);
+
+            if(error) throw error;
+
+            if(stores && stores.length > 0){
+                const flattenStoresArray = Array.from(new Set(stores.flatMap(item=> item.stores).map(store=> store?.id ? store?.id : store)))
+                const hasWorklowConfigured = removedStores.some(store => flattenStoresArray.includes(store))
+                    existsInWorkflow = hasWorklowConfigured;
+                    if(existsInWorkflow){
+                        toast.error("Cannot configure store access. Removed stores has active workflows for this users.")
+                        return;
+                    }
+            }
+
+                    const {data, error:updateError} = await supabase
+                    .from('user_mgmt')
+                    .update({
+                        locations:permittedLocations,
+                        stores: permittedStores
+                    })
+                    .in('id',groupedUserIds);
+
+                    if(updateError) throw updateError;
+                    toast.success("Locations and Stores access updated successfully.")
+
         } catch (error) {
             console.log("Failed to save configuration", error)
         }
@@ -283,7 +326,7 @@ export const ModifyWorkflowModal = ({
                                     </div>
                                     <div className="bg-white grid grid-cols-[25%_65%_8%] p-3 hover:bg-gray-50 transition-colors duration-200">
                                         <span className="flex justify-start items-center">
-                                            <label className="font-semibold text-sm">{data.module_name}{' '}-{' '}{data.actionName}</label>
+                                            <label className="font-semibold text-sm">{data.module_name}{' '}-{' '}{data.action_name}</label>
                                         </span>
                                         <div>
                                             {groupedUsers.length > 1 ? (
@@ -419,7 +462,7 @@ export const ModifyWorkflowModal = ({
                             ) : (
                                 <div className="bg-white border shadow px-5 py-7 text-gray-600 rounded-lg flex flex-col justify-center items-center space-y-1">
                                     <p className="text-[15px]">The approval workflow for the action{' '}
-                                        <label className="font-bold text-gray-600 text-[16px]">"{data.module_name}{' '}-{' '}{data.actionName}"</label>{' '}
+                                        <label className="font-bold text-gray-600 text-[16px]">"{data.module_name}{' '}-{' '}{data.action_name}"</label>{' '}
                                         is currently configured and applies to <label className="font-bold text-gray-600">{groupedUsers?.length} {groupedUsers?.length > 1 ? 'users' : 'user'}</label>.</p>
                                     Any modifications made to this configuration will be applied to all this users.
                                     <span className="text-black mt-3 font-semibold">Would you like to proceed and edit this workflow configuration?</span>
@@ -488,10 +531,21 @@ export const ModifyWorkflowModal = ({
                                                                                 return (
 
                                                                                     <div key={store.id} className="flex justify-start items-center gap-2">
-                                                                                        <Checkbox
+                                                                                        <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <span>
+
+                                                    <Checkbox
+                                                    disabled={!hasLocationAccess}
                                                                                             checked={hasLocationAccess && hasStoreAccess}
                                                                                             onCheckedChange={() => toggleStoreAccess(store.id)}
                                                                                         />
+                                                    </span>
+                                                </TooltipTrigger>
+                                                {!hasLocationAccess && 
+                                                <TooltipContent>Enable location access.</TooltipContent>
+                                                }
+                                            </Tooltip>
                                                                                         <span className=" text-sm text-gray-600">{store.name}</span>
                                                                                     </div>
                                                                                 )
@@ -528,7 +582,7 @@ export const ModifyWorkflowModal = ({
                         </Button>
                         {viewWorkflow &&
                             <Button
-                            disabled={selectedWorkflowGroup.length === 0}
+                            disabled={data.is_store_specific && selectedWorkflowGroup.length === 0}
                             className="py-4 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 transition-colors duration-200 text-white">
                                 Edit Workflow Config
                             </Button>
@@ -581,7 +635,7 @@ export const ModifyWorkflowModal = ({
                 </DialogHeader>
                 <div className="p-1">
                    <p className="text-gray-700">Are you sure you want to permanently delete all workflow configurations for{' '}
-                    <label className="font-bold">{data.module_name}{' '}-{' '}{data.actionName}?</label>
+                    <label className="font-bold">{data.module_name}{' '}-{' '}{data.action_name}?</label>
                    </p>
                    <p className="text-sm text-gray-500 mt-1">This will remove the workflow setup across all stores for this action. This cannot be undone.</p>
                 </div>

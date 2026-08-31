@@ -5,8 +5,8 @@ import { Pencil } from "lucide-react"
 interface UsersModalProps {
     open: boolean;
     onClose: (open: boolean) => void;
-    groupedUsers: any[];
-    setGroupedUsers: React.Dispatch<React.SetStateAction<any[]>>;
+    groupedUsers: any[] | null;
+    setGroupedUsers: React.Dispatch<React.SetStateAction<any[] | null>>;
     setUserId: React.Dispatch<React.SetStateAction<string>>;
     setLoadPermission: React.Dispatch<React.SetStateAction<boolean>>;
 }
