@@ -11,6 +11,10 @@ interface ManageWorkflowModalProps {
     open: boolean;
     onClose: (open: boolean) => void;
     manageWorkflowData: object;
+    setManageWorkflowData: React.Dispatch<React.SetStateAction<{}>>;
+    setGroupedUsers: React.Dispatch<React.SetStateAction<any[] | null>>;
+    setModifyWorkflowModal: (value: React.SetStateAction<boolean>) => void;
+    setModifyWorkflowData: React.Dispatch<React.SetStateAction<{}>>;
     actions:any[];
     setConfigWorkflowData: React.Dispatch<React.SetStateAction<ConfigWorkflowDataProps | null | undefined>>
     handleSetWorkflowConfig: () => void
@@ -31,12 +35,17 @@ interface ConfigWorkflowDataProps {
     assignedUsers: UserProps[];
     userStores: Json;
     selectedModule: Json;
+    isEditMode :boolean;
 }
 
 export const ManageWorkflowModal =({
     open,
     onClose,
     manageWorkflowData,
+    setManageWorkflowData,
+    setGroupedUsers,
+    setModifyWorkflowModal,
+    setModifyWorkflowData,
     actions,
     setConfigWorkflowData,
     handleSetWorkflowConfig
@@ -64,21 +73,36 @@ export const ManageWorkflowModal =({
         })
     }
 
+     const handleEditWorkflow = (action:object)=>{
+        const workflow = data.workflowData.filter((w) => w.action_id === action.action_id);
+        const selectedAction ={action_id:action.action_id, action_name:action.action_name, requires_approval:action.requires_approval}
+        setGroupedUsers(data.assignedUsers);
+        setModifyWorkflowData({selectedModule :data.selectedModule, selectedActions:[selectedAction], workflow:workflow});
+        handleResetState();
+        setModifyWorkflowModal(true);
+    }
+
     const handleConfigureWorkflow = ()=>{
          const configData = {
         selectedModule: data.selectedModule,
-        selectedActions: selectedWorkflowActions, assignedUsers: data.assignedUsers, userStores: data.userStores
+        selectedActions: selectedWorkflowActions, assignedUsers: data.assignedUsers, userStores: data.userStores, isEditMode :false
         }
-        onClose(open)
         setConfigWorkflowData(configData);
+        handleResetState();
         handleSetWorkflowConfig()
         console.log('configData',configData)
+    }
+
+        function handleResetState(){
+            onClose(open)
+        setManageWorkflowData({});
+        setSelectedWorkflowActions([]);
     }
 
 
     return(
 
-<Dialog open={open} onOpenChange={onClose}>
+<Dialog open={open} onOpenChange={()=>handleResetState()}>
                 <DialogContent className="md:max-w-[55vw] p-0 gap-0 rounded-xl bg-gray-50">
                     <DialogHeader className="px-5 py-4 border-b rounded-t-xl border-gray-300 bg-white">
                         <DialogTitle className="text-blue-700 ps-1 my-2">
@@ -131,7 +155,9 @@ export const ManageWorkflowModal =({
                                                                                                 <span className="flex justify-end items-center pr-1">
                                                                                                     
                                                                                                 {hasWorkflowConfig ? (
-                                                                                                    <Button size='sm' variant='outline' className="flex items-center text-sm text-blue-500 border border-blue-200 hover:text-blue-600">
+                                                                                                    <Button
+                                                                                                    onClick={()=>handleEditWorkflow({...a,action_name})}
+                                                                                                     size='sm' variant='outline' className="flex items-center text-sm text-blue-500 border border-blue-200 hover:text-blue-600">
                                                                                                       <Pencil/>  Edit Workflow
                                                                                                     </Button>
                                                                                                 ): (
@@ -155,7 +181,7 @@ export const ManageWorkflowModal =({
                                                                                     </div>
                     <DialogFooter className="bg-white border-t px-5 py-4 rounded-b-xl">
                         <div className="flex justify-end gap-2">
-                            <Button className="py-4 px-5 rounded-xl" variant="outline" onClick={() => onClose(open)}>
+                            <Button className="py-4 px-5 rounded-xl" variant="outline" onClick={()=>handleResetState()}>
                                 Close
                             </Button>
                             <Button

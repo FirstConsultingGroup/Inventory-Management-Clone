@@ -112,7 +112,7 @@ export const fetchUserPermissions = async (userId: string, companyId: string): P
       .select(`
       id,
       email,
-      role_master (
+      role_master!user_mgmt_role_id_fkey (
         id,
     name
       )

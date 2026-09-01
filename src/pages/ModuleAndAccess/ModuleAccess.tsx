@@ -85,6 +85,7 @@ interface ConfigWorkflowDataProps {
     assignedUsers: UserProps[];
     userStores: Json;
     selectedModule: Json;
+    isEditMode : boolean;
 }
 
 export const ModuleAccess = () => {
@@ -200,6 +201,7 @@ export const ModuleAccess = () => {
                     .from('role_master')
                     .select('*')
                     .eq('is_active', true)
+                    .neq('name', 'Super Admin')
                     .eq('company_id', companyId);
 
                 if (roleName.trim()) {
@@ -773,11 +775,11 @@ export const ModuleAccess = () => {
             const jsonActivatePayload = JSON.stringify(ActivatePayload)
             // console.log('jsonActivatePayload',jsonActivatePayload)
 
-            const { data: ActivateData, error: ActivateError } = await supabase.rpc("bulk_update_module_permissions", {
-                p_payload: jsonActivatePayload
-            })
+            // const { data: ActivateData, error: ActivateError } = await supabase.rpc("bulk_update_module_permissions", {
+            //     p_payload: jsonActivatePayload
+            // })
 
-            if (ActivateError) throw ActivateError;
+            // if (ActivateError) throw ActivateError;
 
             const DeActivatePayload = {
                 company_id: companyId,
@@ -790,17 +792,17 @@ export const ModuleAccess = () => {
             const jsonDeActivatePayload = JSON.stringify(DeActivatePayload)
             // console.log('jsonDeActivatePayload',jsonDeActivatePayload)
 
-            const { data: DeActivateData, error: DeActivateError } = await supabase.rpc("bulk_update_module_permissions", {
-                p_payload: jsonDeActivatePayload
-            })
+            // const { data: DeActivateData, error: DeActivateError } = await supabase.rpc("bulk_update_module_permissions", {
+            //     p_payload: jsonDeActivatePayload
+            // })
 
-            if (DeActivateError) throw DeActivateError;
+            // if (DeActivateError) throw DeActivateError;
 
-            if (ActivateData && DeActivateData) {
-                console.log('saved data', ActivateData, DeActivateData)
-                toast.success("Permissions Saved Successfully");
-                fetchGroupedModuleAccess();
-            }
+            // if (ActivateData && DeActivateData) {
+            //     console.log('saved data', ActivateData, DeActivateData)
+            //     toast.success("Permissions Saved Successfully");
+            //     fetchGroupedModuleAccess();
+            // }
 
         } catch (error) {
             console.log("Error saving permission changes", error);
@@ -1180,18 +1182,19 @@ export const ModuleAccess = () => {
                                                                                                                                             <Tooltip>
                                                                                                                                                 <TooltipTrigger asChild>
                                                                                                                                                     <button
-                                                                                                                                                disabled={modulePermission.length === 0}
+                                                                                                                                                disabled={!modulePermission || modulePermission.length === 0}
                                                                                                                                                 onClick={() => {
                                                                                                                                                     console.log('modulePermission', modulePermission)
                                                                                                                                                     setManageWorkflowModal(true)
-                                                                                                                                                    const data = { module_id: m.id, module_name: m.module_name, available_actions: availableActions }
+                                                                                                                                                    const data = { selectedModule: { module_id: m.id, module_name: m.module_name, is_store_specific: m.is_store_specific },
+                                                                                                                                                     available_actions: availableActions, assignedUsers: grp.users, userStores: grp.users[0].stores,workflowData:workflowData }
                                                                                                                                                     setManageWorkflowData(data)
                                                                                                                                                     console.log('setManageWorkflowData', data)
                                                                                                                                                 }} className="">
-                                                                                                                                                <Settings className={`h-6 w-6 p-1 rounded-full ${modulePermission.length === 0 ? 'text-[#bfbfbf]' : 'text-gray-500  hover:bg-blue-100 hover:text-blue-500 transition duration-200 '}`} />
+                                                                                                                                                <Settings className={`h-6 w-6 p-1 rounded-full ${!modulePermission ||modulePermission.length === 0 ? 'text-[#bfbfbf]' : 'text-gray-500  hover:bg-blue-100 hover:text-blue-500 transition duration-200 '}`} />
                                                                                                                                             </button>
                                                                                                                                                 </TooltipTrigger>
-                                                                                                                                                {modulePermission.length === 0  &&
+                                                                                                                                                {!modulePermission || modulePermission.length === 0  &&
                                                                                                                                                     <TooltipContent>Please assign permissions to configure workflow</TooltipContent>
                                                                                                                                                 }
                                                                                                                                             </Tooltip>
@@ -1268,7 +1271,7 @@ export const ModuleAccess = () => {
                                                                                                                                                                         setSelectedMultipleActions(actionData);
                                                                                                                                                                         const configData = {
                                                                                                                                                                             selectedModule: { module_id: m.id, module_name: m.module_name, is_store_specific: m.is_store_specific },
-                                                                                                                                                                            selectedActions: [], assignedUsers: grp.users, userStores: grp.users[0].stores
+                                                                                                                                                                            selectedActions: [], assignedUsers: grp.users, userStores: grp.users[0].stores, isEditMode :false
                                                                                                                                                                         }
                                                                                                                                                                         setConfigWorkflowData(configData)
                                                                                                                                                                     }
@@ -1316,7 +1319,7 @@ export const ModuleAccess = () => {
                                                                                                                                                                                             setSelectedAction(actionData);
                                                                                                                                                                                             const configData = {
                                                                                                                                                                                                 selectedModule: { module_id: m.id, module_name: m.module_name, is_store_specific: m.is_store_specific },
-                                                                                                                                                                                                selectedActions: [actionData], assignedUsers: grp.users, userStores: grp.users[0].stores
+                                                                                                                                                                                                selectedActions: [actionData], assignedUsers: grp.users, userStores: grp.users[0].stores,isEditMode :false
                                                                                                                                                                                             }
                                                                                                                                                                                             setConfigWorkflowData(configData)
                                                                                                                                                                                         }
@@ -1327,7 +1330,8 @@ export const ModuleAccess = () => {
                                                                                                                                                                                 onClick={() => {
                                                                                                                                                                                     if (isModuleAccessEnabled && hasWorkflowConfig) {
                                                                                                                                                                                         setModifyWorkflowModal(true);
-                                                                                                                                                                                        const data = { module_id: m.id, module_name: m.module_name, is_store_specific: m.is_store_specific, action_id: a.action_id, action_name: action_name, workflow: workflow }
+                                                                                                                                                                                        const data = { selectedModule: { module_id: m.id, module_name: m.module_name, is_store_specific: m.is_store_specific },
+                                                                                                                                                                                        selectedActions: [{ ...a, action_name: action_name }], workflow: workflow }
                                                                                                                                                                                         setModifyWorkflowData(data);
                                                                                                                                                                                         setGroupedUsers(grp.users);
                                                                                                                                                                                     }
@@ -1356,19 +1360,19 @@ export const ModuleAccess = () => {
                                                                                                                                             <Tooltip>
                                                                                                                                                 <TooltipTrigger asChild>
                                                                                                                                                     <button
-                                                                                                                                                disabled={modulePermission.length === 0}
+                                                                                                                                                disabled={!modulePermission || modulePermission.length === 0}
                                                                                                                                                 onClick={() => {
                                                                                                                                                     console.log('modulePermission', modulePermission)
                                                                                                                                                     setManageWorkflowModal(true)
                                                                                                                                                     const data = { selectedModule: { module_id: m.id, module_name: m.module_name, is_store_specific: m.is_store_specific },
-                                                                                                                                                     available_actions: availableActions, assignedUsers: grp.users, userStores: grp.users[0].stores }
+                                                                                                                                                     available_actions: availableActions, assignedUsers: grp.users, userStores: grp.users[0].stores,workflowData:workflowData }
                                                                                                                                                     setManageWorkflowData(data)
                                                                                                                                                     console.log('setManageWorkflowData', data)
                                                                                                                                                 }} className="">
-                                                                                                                                                <Settings className={`h-6 w-6 p-1 rounded-full ${modulePermission.length === 0 ? 'text-[#bfbfbf]' : 'text-gray-500  hover:bg-blue-100 hover:text-blue-500 transition duration-200 '}`} />
+                                                                                                                                                <Settings className={`h-6 w-6 p-1 rounded-full ${!modulePermission || modulePermission.length === 0 ? 'text-[#bfbfbf]' : 'text-gray-500  hover:bg-blue-100 hover:text-blue-500 transition duration-200 '}`} />
                                                                                                                                             </button>
                                                                                                                                                 </TooltipTrigger>
-                                                                                                                                                {modulePermission.length === 0  &&
+                                                                                                                                                {!modulePermission || modulePermission.length === 0  &&
                                                                                                                                                     <TooltipContent>Please assign permissions to configure workflow</TooltipContent>
                                                                                                                                                 }
                                                                                                                                             </Tooltip>
@@ -1535,8 +1539,12 @@ export const ModuleAccess = () => {
                     open={manageWorkflowModal}
                     onClose={() => setManageWorkflowModal(false)}
                     manageWorkflowData={manageWorkflowData}
+                    setManageWorkflowData={setManageWorkflowData}
+                    setGroupedUsers={setGroupedUsers}
+                    setModifyWorkflowModal={setModifyWorkflowModal}
+                    setModifyWorkflowData={setModifyWorkflowData}
                     actions={actions}
-            setConfigWorkflowData={setConfigWorkflowData}
+                    setConfigWorkflowData={setConfigWorkflowData}
                     handleSetWorkflowConfig={handleSetWorkflowConfig}
                 />
 
@@ -1544,17 +1552,19 @@ export const ModuleAccess = () => {
                     open={modifyWorkflowModal}
                     onClose={() => setModifyWorkflowModal(false)}
                     modifyWorkflowData={modifyWorkflowData}
+                    setModifyWorkflowData={setModifyWorkflowData}
                     companyId={companyId}
                     groupedUsers={groupedUsers}
                     setGroupedUsers={setGroupedUsers}
-                    actions={actions}
+                    setConfigWorkflowData={setConfigWorkflowData}
+                    handleSetWorkflowConfig={handleSetWorkflowConfig}
                 />
             </>
         )
     } else {
         return <WorkflowConfig
             companyId={companyId}
-            createdBy={userData.id}
+            UserId={userData.id}
             setShowModuleAccess={setShowModuleAccess}
             setShowWorkflowConfig={setShowWorkflowConfig}
             configWorkflowData={configWorkflowData}

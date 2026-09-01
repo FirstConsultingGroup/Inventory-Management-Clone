@@ -9,10 +9,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Json } from "@/Utils/types/database.types"
 import { supabase } from "@/Utils/types/supabaseClient"
-import { ArrowLeft, BadgeAlert, Ban, Check, CheckCheck, ChevronUp, Edit, Plus, Trash, Trash2, X } from "lucide-react"
+import { ArrowLeft, BadgeAlert, BadgeInfoIcon, Ban, Check, CheckCheck, ChevronUp, Edit, Plus, Trash, Trash2, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import toast from "react-hot-toast"
-import { boolean } from "zod"
 
 
 interface UserProps {
@@ -34,19 +33,35 @@ interface ConfigWorkflowDataProps {
         module_name: string;
         is_store_specific: boolean;
     };
+    isEditMode: boolean;
 }
 
 interface LevelDataProps {
     level: number;
-    approverRole: string | null
-    approvalUsers: string[] | [];
-    multipleApprovalRequired: boolean;
-    active: boolean;
+    action_id: string | null;
+    approval_users: Json;
+    assigned_to: string | null;
+    company_id: string | null;
+    created_at: string;
+    created_by: string;
+    full_rejection_enabled: boolean | null;
+    can_edit_document: boolean | null;
+    id?: string;
+    is_active: boolean | null;
+    modified_at: string | null;
+    modified_by: string | null;
+    module_id: string | null;
+    multiple_approvers_enabled: boolean | null;
+    override_enabled: boolean | null;
+    role_id: string;
+    scope_level: string | null;
+    status: boolean | null;
+    stores: Json | null;
 }
 
 interface WorkflowConfigProps {
     companyId: string;
-    createdBy: string;
+    UserId: string;
     setShowWorkflowConfig: React.Dispatch<React.SetStateAction<boolean>>;
     setShowModuleAccess: React.Dispatch<React.SetStateAction<boolean>>;
     configWorkflowData: ConfigWorkflowDataProps | null | undefined;
@@ -55,7 +70,7 @@ interface WorkflowConfigProps {
 
 export const WorkflowConfig = ({
     companyId,
-    createdBy,
+    UserId,
     setShowModuleAccess,
     setShowWorkflowConfig,
     configWorkflowData,
@@ -63,6 +78,7 @@ export const WorkflowConfig = ({
 }: WorkflowConfigProps) => {
 
     const [levels, setLevels] = useState<LevelDataProps[]>([]);
+    const [initialLevels, setInitialLevels] = useState<LevelDataProps[]>([]);
     const [roles, setRoles] = useState([]);
     const [users, setUsers] = useState([]);
     const [roleId, setRoleId] = useState<string | null>(null);
@@ -82,20 +98,26 @@ export const WorkflowConfig = ({
     const [showConfirmStoreAccessModal, setShowConfirmStoreAccessModal] = useState(false);
     const [configData, setConfigData] = useState<ConfigWorkflowDataProps | null>();
     const [updatingStoreAccess, setUpdatingStoreAccess] = useState(false);
-    const [temporaryLevelData, setTemporaryLevelData] = useState<LevelDataProps>({
+    const [temporaryLevelData, setTemporaryLevelData] = useState({
         level: levels.length + 1,
-        approverRole: null,
-        approvalUsers: [],
-        multipleApprovalRequired: false,
-        active: true
+        role_id: null,
+        approval_users: [],
+        multiple_approvers_enabled: false,
+        status: true
     })
 
-    const [superAdminOverride, setSuperAdminOverride] = useState(false);
-    const [completeRejection, setCompleteRejection] = useState(false);
+    const [override_enabled, setOverride_enabled] = useState(false);
+    const [full_rejection_enabled, setFullRejectionEnabled] = useState(false);
+    const [hasAddOrEditAction, setHasAddOrEditAction] = useState(false);
+    const [can_edit_document,setCan_edit_document] = useState(false);
 
+    const [editMode, setEditMode] = useState<boolean>(false);
     useEffect(() => {
         console.log('configWorkflowData', configWorkflowData)
         setConfigData(configWorkflowData);
+        setEditMode(configWorkflowData?.isEditMode ?? false)
+        const selectedActionNames = new Set(configWorkflowData?.selectedActions?.map(action => action.action_name?.[0]?.toLowerCase()) || []);
+        setHasAddOrEditAction(selectedActionNames.has("add") || selectedActionNames.has("edit"));
     }, [configWorkflowData])
 
 
@@ -143,8 +165,10 @@ export const WorkflowConfig = ({
             if (error) throw error;
 
             setUsers(users);
+            console.log('users', users)
             if (selectedApprovalUsers.length > 0) {
                 setSelectedRoleUsers(selectedApprovalUsers)
+                console.log('has approval users', selectedApprovalUsers)
             } else {
                 setSelectedRoleUsers(users.map(u => u.id))
             }
@@ -177,13 +201,68 @@ export const WorkflowConfig = ({
 
                 if (storesError) throw storesError;
                 setStores(storeData);
-                setSelectedStores(storeData.map(s => s.id))
+               
             } catch (error) {
                 console.log('Error fetching locations', error)
             }
         }
         fetchStores();
     }, [storeName, configData?.userStores])
+
+    const fetchWorkflowData = async () => {
+        if (!editMode || !configData) return;
+        
+        const module_id = configData.selectedModule.module_id;
+        const action_id = configData.selectedActions[0].action_id;
+        const assignedUserId = configData.assignedUsers?.[0].id
+
+        console.log(module_id, action_id, assignedUserId)
+        
+            const { data, error } = await supabase
+                .from('workflow_config')
+                .select('*')
+                .eq('assigned_to', assignedUserId)
+                .eq('module_id', module_id)
+                .eq('action_id', action_id)
+                .eq('company_id', companyId)
+                .eq('is_active', true)
+                .order('level', { ascending: true });
+
+            if (error) throw error;
+            
+            console.log('data', data)
+            setLevels(data)
+            setInitialLevels(data)
+            setTemporaryLevelData((prev) => {
+                return { ...prev, level: 0 }
+            })
+        }
+        useEffect(() => {
+
+        fetchWorkflowData()
+    }, [editMode, configData])
+
+    useEffect(() => {
+        setOverride_enabled(initialLevels[0]?.override_enabled ?? false);
+        setFullRejectionEnabled(initialLevels[0]?.full_rejection_enabled ?? false);
+        setCan_edit_document(initialLevels[0]?.can_edit_document ?? false);
+
+        if(!configData?.userStores || stores.length === 0) return;
+        if(editMode){
+            const initialWorkflowStores = initialLevels[0]?.stores?.map((store: any) => store.id) || [];
+            const initialStoreIds = stores.filter(store => initialWorkflowStores?.includes(store.id)).map(store => store.id);
+            console.log('initialStoreIds', initialStoreIds);
+            console.log('stores', stores);
+            if(initialWorkflowStores.length > 0){
+                setSelectedStores(initialWorkflowStores)
+            }
+        }else{
+            setSelectedStores(stores.map(s => s.id))
+        }
+        
+    }, [stores,configData?.userStores,initialLevels,editMode])
+
+
 
     function toggleApprovalUsers(userId: string) {
         setSelectedRoleUsers(prev => {
@@ -211,7 +290,7 @@ export const WorkflowConfig = ({
 
     const filteredRoles = useMemo(() => {
 
-        const assignedRoles = levels.filter(lvl => lvl.level !== temporaryLevelData.level).map(lvl => lvl.approverRole).filter(Boolean);
+        const assignedRoles = levels.filter(lvl => lvl.level !== temporaryLevelData.level).map(lvl => lvl.role_id).filter(Boolean);
         return (roles.filter(role => !assignedRoles.includes(role.id)))
 
     }, [roles, levels, temporaryLevelData.level]);
@@ -224,10 +303,10 @@ export const WorkflowConfig = ({
             setLevels(updatedLevelData => {
                 return [...updatedLevelData, {
                     level: levels.length + 1,
-                    approverRole: null,
-                    approvalUsers: [],
-                    multipleApprovalRequired: false,
-                    active: true
+                    role_id: null,
+                    approval_users: [],
+                    multiple_approvers_enabled: false,
+                    status: true
                 }]
             })
         } else if (updateData != false) {
@@ -240,10 +319,10 @@ export const WorkflowConfig = ({
 
         setTemporaryLevelData({
             level: levels.length + 1,
-            approverRole: null,
-            approvalUsers: [],
-            multipleApprovalRequired: false,
-            active: true
+            role_id: null,
+            approval_users: [],
+            multiple_approvers_enabled: false,
+            status: true
         })
         console.log('updatedLevelData', updatedLevelData)
     }
@@ -324,75 +403,169 @@ export const WorkflowConfig = ({
                 configData.selectedActions.forEach((action) => {
                     workflowLevelsPayload.push({
                         level: levelItem.level,
-                        role_id: levelItem.approverRole,
-                        override_enabled: superAdminOverride,
-                        created_by: createdBy,
-                        modified_by: createdBy,
+                        role_id: levelItem.role_id,
+                        override_enabled: override_enabled,
+                        created_by: UserId,
+                        modified_by: UserId,
                         company_id: companyId,
-                        multiple_approvers_enabled: levelItem.multipleApprovalRequired,
-                        approval_users: levelItem.approvalUsers,
-                        full_rejection_enabled: completeRejection,
+                        multiple_approvers_enabled: levelItem.multiple_approvers_enabled,
+                        approval_users: levelItem.approval_users,
+                        full_rejection_enabled: full_rejection_enabled,
+                        can_edit_document: action.action_name[0] === 'Edit' || action.action_name[0] === 'Add' ? can_edit_document : false,
                         module_id: moduleId,
                         action_id: action.action_id,
                         assigned_to: user.id,
                         scope_level: "User",
-                        status: levelItem.active,
+                        status: levelItem.status,
                         is_active: true,
                         modified_at: new Date().toISOString(),
-                        stores: selectedStoresList
+                        stores: configData?.selectedModule.is_store_specific ? selectedStoresList : []
                     })
                 })
             })
         })
 
-        if (workflowLevelsPayload.length > 0) {
-            const { data, error } = await supabase
-                .from('workflow_config')
-                .insert(workflowLevelsPayload)
-                .select();
+        console.log('editMode', editMode);
+        if (editMode) {
+            console.log('initialLevels', initialLevels);
+            console.log('levels', levels);
+            
+            const deletedLevels = initialLevels.filter(initialLevel => !levels.some(level => level?.id === initialLevel.id));
+            const updatedLevels = levels.filter(level => initialLevels.some(initialLevel => initialLevel?.id === level?.id));
+            const newLevels = levels.filter(level => !initialLevels.some(initialLevel => initialLevel?.id === level?.id));
+            console.log('deletedLevels', deletedLevels);
+            console.log('updatedLevels', updatedLevels);
+            console.log('newLevels', newLevels);
 
-            if (error) {
-                toast.error(error?.message)
-                throw error;
+            if(deletedLevels.length > 0) {
+                const deletedIds: string[] = deletedLevels.map(level => level.id);
+
+                const { error: deleteError } = await supabase
+                    .from('workflow_config')
+                    .update({ is_active: false })
+                    .in('id', deletedIds);
+
+                if(deleteError) {
+                    toast.error(deleteError?.message)
+                    throw deleteError;
+                }
+                console.log('deletedIds', deletedIds);
             }
 
-            console.log('data', data);
-            if (configData?.assignedUsers && moduleId) {
-                for(const user of configData?.assignedUsers){
-                        const {data:modulePrm} = await supabase
-                        .from('module_permissions')
-                        .select('permissions')
-                        .eq('user_id',user.id)
-                        .eq('module_id',moduleId)
-                        .eq('company_id',companyId);
+            if(updatedLevels.length > 0) {
+                for (const level of updatedLevels) {
+                    const isEditableAction = configData?.selectedActions.filter(action => action.action_id === level.action_id).some(action => action.action_name[0] === 'Edit' || action.action_name[0] === 'Add');
+                    console.log('isEditableAction', isEditableAction);
+                    const updatePayload = {
+                        level: level.level,
+                        role_id: level.role_id,
+                        multiple_approvers_enabled: level.multiple_approvers_enabled,
+                        approval_users: level.approval_users,
+                        status: level.status,
+                        modified_at: new Date().toISOString(),
+                        override_enabled: override_enabled,
+                        modified_by: UserId,
+                        full_rejection_enabled: full_rejection_enabled,
+                        can_edit_document: isEditableAction ? can_edit_document : false,
+                        stores: configData?.selectedModule.is_store_specific ? selectedStoresList : []
+                    };
+                    const { error: UpdateError } = await supabase
+                    .from('workflow_config')
+                    .update(updatePayload)
+                    .eq('id', level?.id);
 
-                        console.log(user.first_name,modulePrm[0]?.permissions);
-
-                        if(modulePrm){
-                            const selectedActionIds = configData.selectedActions.flatMap(action=>action.action_id)
-                            const updatedPermissions = modulePrm[0]?.permissions.map(prm => {
-                                if(selectedActionIds.includes(prm.action_id)){
-                                    return {...prm,requiredworkflow:true}
-                                }else{
-                                    return {...prm}
-                                }
-                            });
-
-                            const {data: updatedPrm} = await supabase
-                        .from('module_permissions')
-                        .update({permissions:updatedPermissions})
-                        .eq('user_id',user.id)
-                        .eq('module_id',moduleId)
-                        .eq('company_id',companyId)
-                        .select();
-
-                            console.log('updatedPermissions data',updatedPrm)
-                        }
+                    if(UpdateError) {
+                        toast.error(UpdateError?.message)
+                        throw UpdateError;
+                    }
+                    console.log('updatePayload', updatePayload);
                 }
             }
 
-            toast.success("Workflow Configuration Saved Successfully")
+            if(newLevels.length > 0) {
+                const insertPayload = workflowLevelsPayload.filter(level => newLevels.some(newLevel => newLevel.level === level.level));
+
+                 const { error: insertError } = await supabase
+                    .from('workflow_config')
+                    .insert(insertPayload);
+
+                if (insertError) {
+                    toast.error(insertError?.message)
+                    throw insertError;
+                }
+
+                console.log('insertPayload', insertPayload);
+            }
+        } else {
+            if (workflowLevelsPayload.length > 0) {
+                console.log('workflowLevelsPayload', workflowLevelsPayload);
+                const { data, error } = await supabase
+                    .from('workflow_config')
+                    .insert(workflowLevelsPayload)
+                    .select();
+
+                if (error) {
+                    toast.error(error?.message)
+                    throw error;
+                }
+
+                console.log('data', data);
+                if (data && configData?.assignedUsers && moduleId) {
+                    for (const user of configData?.assignedUsers) {
+                        const { data: modulePrm } = await supabase
+                            .from('module_permissions')
+                            .select('permissions')
+                            .eq('user_id', user.id)
+                            .eq('module_id', moduleId)
+                            .eq('company_id', companyId);
+
+                        console.log(user.first_name, modulePrm?.[0]?.permissions);
+
+                        if (modulePrm) {
+                            const selectedActionIds = configData.selectedActions.flatMap(action => action.action_id)
+                            const updatedPermissions = modulePrm?.[0]?.permissions.map(prm => {
+                                if (selectedActionIds.includes(prm.action_id)) {
+                                    return { ...prm, requiredworkflow: true }
+                                } else {
+                                    return { ...prm }
+                                }
+                            });
+
+                            const { data: updatedPrm } = await supabase
+                                .from('module_permissions')
+                                .update({ permissions: updatedPermissions })
+                                .eq('user_id', user.id)
+                                .eq('module_id', moduleId)
+                                .eq('company_id', companyId)
+                                .select();
+
+                            console.log('updatedPermissions data', updatedPrm)
+                        }
+                    }
+                }
+
+            }
         }
+            toast.success(editMode?  "Workflow Configuration Updated Successfully" : "Workflow Configuration Created Successfully");
+            fetchWorkflowData();
+    }
+
+        function handleResetState(){
+            setConfigWorkflowData(null);
+            setShowWorkflowConfig(false);
+            setShowModuleAccess(true);
+            setTemporaryLevelData({
+        level: levels.length + 1,
+        role_id: null,
+        approval_users: [],
+        multiple_approvers_enabled: false,
+        status: true
+    });
+    setSelectedStores([]);
+    setOverride_enabled(false);
+    setFullRejectionEnabled(false);
+    setCan_edit_document(false);
+
     }
 
     return (
@@ -411,7 +584,7 @@ export const WorkflowConfig = ({
                                     <ArrowLeft className="h-5 w-5 text-gray-500" />
                                 </Button>
                                 <div className="p-2.5 rounded-lg bg-blue-100 shadow-sm">
-                                    <BadgeAlert className="h-6 w-6 text-blue-600" />
+                                    <BadgeInfoIcon className="h-6 w-6 text-blue-600" />
                                 </div>
                                 <div>
                                     <CardTitle className="text-2xl font-bold flex items-center gap-2">
@@ -465,7 +638,7 @@ export const WorkflowConfig = ({
                                                     {selectedStores.length > 0 ?
                                                         <div className="flex flex-col gap-1 flex-wrap items-start">
                                                             {selectedStores.map((s) => {
-                                                                const store = stores.find(store => store.id === s)
+                                                                const store = stores.find(store => store.id === s);
                                                                 return (
                                                                     <span key={store.id} className=" px-1.5 py-0.5 text-xs font-semibold bg-blue-600 text-white rounded-lg">{store?.name} </span>
                                                                 )
@@ -548,8 +721,8 @@ export const WorkflowConfig = ({
                                             {levels.length > 0 &&
                                                 levels.map((level: LevelDataProps, index: number) => {
                                                     let roleData = '';
-                                                    if (level.approverRole) {
-                                                        const role = roles.find(role => role.id === level.approverRole)
+                                                    if (level?.role_id) {
+                                                        const role = roles.find(role => role.id === level?.role_id)
                                                         roleData = role?.name
                                                     } else {
                                                         roleData = "No role Selected"
@@ -570,7 +743,7 @@ export const WorkflowConfig = ({
 
                                                                                     return {
                                                                                         ...prev,
-                                                                                        approverRole: value,
+                                                                                        role_id: value,
                                                                                     }
 
                                                                                 })
@@ -589,7 +762,7 @@ export const WorkflowConfig = ({
                                                                         </Select>
                                                                         :
                                                                         (
-                                                                            <span className={` ${level.approverRole ? 'bg-gray-100 border rounded-lg px-2 font-semibold text-gray-800 text-center text-[13px]' : 'italic ps-1 text-gray-400'}`}>
+                                                                            <span className={` ${level?.role_id ? 'bg-gray-100 border rounded-lg px-2 font-semibold text-gray-800 text-center text-[13px]' : 'italic ps-1 text-gray-400'}`}>
                                                                                 {roleData}
                                                                             </span>
                                                                         )
@@ -602,40 +775,40 @@ export const WorkflowConfig = ({
                                                                         <TooltipTrigger asChild>
                                                                             <div className="flex items-center justify-center">
                                                                                 <button
-                                                                                    disabled={!temporaryLevelData.approverRole}
+                                                                                    disabled={!temporaryLevelData.role_id}
                                                                                     onClick={() => setShowApprovalUsersModal(true)}
-                                                                                    className={` font-semibold py-1.5 px-3 border rounded-md shadow-xs ${temporaryLevelData.approverRole ? 'cursor-pointer hover:bg-gray-100 hover:text-blue-900 ' : 'cursor-not-allowed text-gray-400 '}`}>{selectedApprovalUsers.length > 0 ? `Selected Users (${selectedApprovalUsers.length})` : 'Select Users'}
+                                                                                    className={` font-semibold py-1.5 px-3 border rounded-md shadow-xs ${temporaryLevelData.role_id ? 'cursor-pointer hover:bg-gray-100 hover:text-blue-900 ' : 'cursor-not-allowed text-gray-400 '}`}>{selectedApprovalUsers.length > 0 ? `Selected Users (${selectedApprovalUsers.length})` : 'Select Users'}
                                                                                 </button>
                                                                             </div>
                                                                         </TooltipTrigger>
-                                                                        {!temporaryLevelData.approverRole &&
+                                                                        {!temporaryLevelData.role_id &&
                                                                             <TooltipContent>Select approver role first </TooltipContent>
                                                                         }
                                                                     </Tooltip>
                                                                     :
                                                                     <div className="flex items-center justify-center">
-                                                                        <span className="bg-gray-100 rounded-lg px-2.5 py-0.5 font-semibold text-gray-800 text-[13px]">{level.approvalUsers.length} users</span>
+                                                                        <span className="bg-gray-100 rounded-lg px-2.5 py-0.5 font-semibold text-gray-800 text-[13px]">{level.approval_users?.length} users</span>
                                                                     </div>
                                                                 }
                                                             </TableCell>
                                                             <TableCell className="ps-11">
                                                                 {temporaryLevelData.level === level.level ?
                                                                     <Checkbox
-                                                                        checked={temporaryLevelData.multipleApprovalRequired}
+                                                                        checked={temporaryLevelData.multiple_approvers_enabled}
                                                                         onCheckedChange={() => {
-                                                                            if (temporaryLevelData.multipleApprovalRequired) {
+                                                                            if (temporaryLevelData.multiple_approvers_enabled) {
                                                                                 setTemporaryLevelData(prev => {
-                                                                                    return { ...prev, multipleApprovalRequired: false }
+                                                                                    return { ...prev, multiple_approvers_enabled: false }
                                                                                 })
                                                                             } else {
                                                                                 setTemporaryLevelData(prev => {
-                                                                                    return { ...prev, multipleApprovalRequired: true }
+                                                                                    return { ...prev, multiple_approvers_enabled: true }
                                                                                 })
                                                                             }
                                                                         }}
                                                                         className="border rounded-xs border-gray-800 data-[state=checked]:bg-blue-500 data-[state=checked]:text-white data-[state=checked]:border-blue-500" />
                                                                     :
-                                                                    level.multipleApprovalRequired ? (
+                                                                    level.multiple_approvers_enabled ? (
                                                                         <Check size={20} className="text-green-600" />
                                                                     ) : (
                                                                         <X size={18} className="text-red-600" />
@@ -645,21 +818,21 @@ export const WorkflowConfig = ({
                                                             <TableCell>
                                                                 {temporaryLevelData.level === level.level ?
                                                                     <Checkbox
-                                                                        checked={temporaryLevelData.active}
+                                                                        checked={temporaryLevelData.status}
                                                                         onCheckedChange={() => {
-                                                                            if (temporaryLevelData.active) {
+                                                                            if (temporaryLevelData.status) {
                                                                                 setTemporaryLevelData(prev => {
-                                                                                    return { ...prev, active: false }
+                                                                                    return { ...prev, status: false }
                                                                                 })
                                                                             } else {
                                                                                 setTemporaryLevelData(prev => {
-                                                                                    return { ...prev, active: false }
+                                                                                    return { ...prev, status: true }
                                                                                 })
                                                                             }
                                                                         }}
                                                                         className="border rounded-xs border-gray-800 data-[state=checked]:bg-blue-500 data-[state=checked]:text-white data-[state=checked]:border-blue-500" />
                                                                     :
-                                                                    level.active ? (
+                                                                    level.status ? (
                                                                         <Check size={20} className="text-green-600" />
                                                                     ) : (
                                                                         <X size={18} className="text-red-600" />
@@ -671,11 +844,11 @@ export const WorkflowConfig = ({
                                                                     <span className="flex gap-5 items-center">
                                                                         <button
                                                                             onClick={() => {
-                                                                                if (!temporaryLevelData.approverRole) {
+                                                                                if (!temporaryLevelData.role_id) {
                                                                                     toast.error("Please select an approval role")
                                                                                     return;
                                                                                 }
-                                                                                if (temporaryLevelData.approverRole && temporaryLevelData.approvalUsers.length === 0) {
+                                                                                if (temporaryLevelData.role_id && temporaryLevelData.approval_users.length === 0) {
                                                                                     toast.error("Please select atleast one approval user")
                                                                                     return;
                                                                                 }
@@ -692,11 +865,11 @@ export const WorkflowConfig = ({
                                                                     <span className="flex gap-3 items-center px-3 py-1">
                                                                         <button
                                                                             onClick={() => {
-                                                                                console.log('approvalUsers', level.approvalUsers)
+                                                                                console.log('approval_users', level.approval_users)
                                                                                 setTemporaryLevelData({ ...level });
-                                                                                setRoleId(level.approverRole ?? null);
-                                                                                setSelectedApprovalUsers(level.approvalUsers);
-                                                                                // setSelectedRoleUsers(level.approvalUsers);
+                                                                                setRoleId(level.role_id ?? null);
+                                                                                setSelectedApprovalUsers(level?.approval_users);
+                                                                                // setSelectedRoleUsers(level.approval_users);
                                                                             }}
                                                                             className="p-2 rounded-md shadow border font-semibold hover:bg-gray-100"><Edit size={16} /></button>
                                                                         <button
@@ -730,8 +903,8 @@ export const WorkflowConfig = ({
                                     <TooltipTrigger asChild>
                                         <span className="flex items-center gap-2 w-fit">
                                             <Checkbox
-                                                checked={superAdminOverride}
-                                                onCheckedChange={() => setSuperAdminOverride(!superAdminOverride)}
+                                                checked={override_enabled}
+                                                onCheckedChange={() => setOverride_enabled(!override_enabled)}
                                                 className="border rounded-xs border-gray-800 data-[state=checked]:bg-blue-500 data-[state=checked]:text-white data-[state=checked]:border-blue-500" />
                                             <label>Allow SuperAdmin to override all approval levels</label>
                                         </span>
@@ -742,8 +915,8 @@ export const WorkflowConfig = ({
                                     <TooltipTrigger asChild>
                                         <span className="flex items-center gap-2 w-fit">
                                             <Checkbox
-                                                checked={completeRejection}
-                                                onCheckedChange={() => setCompleteRejection(!completeRejection)}
+                                                checked={full_rejection_enabled}
+                                                onCheckedChange={() => setFullRejectionEnabled(!full_rejection_enabled)}
                                                 className="border rounded-xs border-gray-800 data-[state=checked]:bg-blue-500 data-[state=checked]:text-white data-[state=checked]:border-blue-500" />
                                             <label>Enable Complete rejection</label>
                                         </span>
@@ -752,12 +925,28 @@ export const WorkflowConfig = ({
                                         instead of sending it back to the previous approval level.
                                     </TooltipContent>
                                 </Tooltip>
+                                {hasAddOrEditAction && (
+                                    <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <span className="flex items-center gap-2 w-fit">
+                                            <Checkbox
+                                                checked={can_edit_document}
+                                                onCheckedChange={() => setCan_edit_document(!can_edit_document)}
+                                                className="border rounded-xs border-gray-800 data-[state=checked]:bg-blue-500 data-[state=checked]:text-white data-[state=checked]:border-blue-500" />
+                                            <label>Enable Document Editing By Approvers</label>
+                                        </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>When enabled, approvers at this level can edit the document
+                                        payload before approving.
+                                    </TooltipContent>
+                                </Tooltip>
+                                )}
                                 <div className="flex justify-end items-center my-1">
                                     <Tooltip>
                                         <TooltipTrigger asChild>
                                             <span>
                                                 <Button
-                                                    disabled={levels.length === 0 || levels.some(lvl => lvl.approverRole === null)}
+                                                    disabled={levels.length === 0 || levels.some(lvl => lvl.role_id === null)}
                                                     onClick={() => handleSaveWorkflow()}
                                                     className="bg-gradient-to-r from-blue-500 to-blue-600 hover:bg-gradient-to-r hover:from-blue-600 hover:to-blue-700 transition-colors duration-200 ">
                                                     <span>Save Workflow</span>
@@ -767,7 +956,7 @@ export const WorkflowConfig = ({
                                         {levels.length === 0 &&
                                             <TooltipContent>Please select atleast one level.</TooltipContent>
                                         }
-                                        {levels.length > 0 && levels.some(lvl => lvl.approverRole === null) &&
+                                        {levels.length > 0 && levels.some(lvl => lvl.role_id === null) &&
                                             <TooltipContent>All levels must have an approver role.</TooltipContent>
                                         }
                                     </Tooltip>
@@ -824,6 +1013,7 @@ export const WorkflowConfig = ({
                                                             } else {
                                                                 setSelectedRoleUsers(users.map(u => u.id))
                                                                 setShowApprovalUsersList(false)
+                                                                setUserName("")
                                                             }
                                                         }}
                                                         className="shadow-xs border-gray-300 w-4 h-4" />
@@ -833,11 +1023,11 @@ export const WorkflowConfig = ({
                                                     const selectedUser = selectedRoleUsers.includes(user.id)
                                                     return (
                                                         <span
-                                                            key={user.id} className={`w-full flex justify-start items-center gap-2 px-4 py-2.5 border-t rounded-lg hover:bg-gray-50`}>
+                                                            key={user?.id} className={`w-full flex justify-start items-center gap-2 px-4 py-2.5 border-t rounded-lg hover:bg-gray-50`}>
                                                             <Checkbox
                                                                 checked={selectedUser}
-                                                                onCheckedChange={() => toggleApprovalUsers(user.id)} className="shadow-xs border-gray-300 w-4 h-4" />
-                                                            <label>{user.first_name}{' '}{user.last_name}</label></span>
+                                                                onCheckedChange={() => toggleApprovalUsers(user?.id)} className="shadow-xs border-gray-300 w-4 h-4" />
+                                                            <label>{user?.first_name}{' '}{user?.last_name}</label></span>
                                                     )
                                                 })}
                                             </>
@@ -857,8 +1047,8 @@ export const WorkflowConfig = ({
                                 return (
                                     <div key={user?.id} className="grid grid-cols-[30%_60%_5%] items-center gap-4 bg-gray-50 border-l-2 border-b border-l-blue-400 border-b-gray-200 p-3">
                                         <div className="flex flex-col justify-start shrink-0">
-                                            <label className="text-sm font-semibold text-gray-700 capitalize">{user.first_name}{' '}{user.last_name}</label>
-                                            <span className="text-xs text-gray-500">Dept. {user.department_id.department_name}</span>
+                                            <label className="text-sm font-semibold text-gray-700 capitalize">{user?.first_name}{' '}{user?.last_name}</label>
+                                            <span className="text-xs text-gray-500">Dept. {user?.department_id.department_name}</span>
                                         </div>
                                         <div>
                                             {configData?.selectedModule.is_store_specific &&
@@ -893,7 +1083,7 @@ export const WorkflowConfig = ({
                                             }</div>
                                         <div className="flex justify-center shrink-0">
                                             <X
-                                                onClick={() => toggleApprovalUsers(user.id)}
+                                                onClick={() => toggleApprovalUsers(user?.id)}
                                                 size={22} className="text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors duration-200 rounded-full p-1" />
                                         </div>
                                     </div>
@@ -916,7 +1106,7 @@ export const WorkflowConfig = ({
 
                                         return {
                                             ...prev,
-                                            approvalUsers: selectedRoleUsers
+                                            approval_users: selectedRoleUsers
                                         }
 
                                     })
@@ -998,11 +1188,7 @@ export const WorkflowConfig = ({
                                 Cancel
                             </Button>
                             <Button
-                                onClick={() => {
-                                    setShowWorkflowConfig(false);
-                                    setShowModuleAccess(true);
-                                    setConfigWorkflowData(null);
-                                }}
+                                onClick={() => handleResetState()}
                                 className="py-4 px-6 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors duration-200 text-white">
                                 Confirm Return
                             </Button>
