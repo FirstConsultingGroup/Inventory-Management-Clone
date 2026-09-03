@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Json } from "@/Utils/types/database.types";
 import { supabase } from "@/Utils/types/supabaseClient";
-import { AlertTriangle, Check, CheckCircle, ChevronDown, ChevronRight, ChevronUp, CircleCheck, Save, Settings, Trash, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle, ChevronDown, ChevronRight, ChevronUp, CircleCheck, Save, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -17,8 +17,9 @@ interface ModifyWorkflowModalProps {
     groupedUsers: any[] | null;
     setGroupedUsers: React.Dispatch<React.SetStateAction<any[] | null>>
     companyId: string;
-    setConfigWorkflowData: React.Dispatch<React.SetStateAction<ConfigWorkflowDataProps | null | undefined>>
-    handleSetWorkflowConfig: () => void
+    setConfigWorkflowData: React.Dispatch<React.SetStateAction<ConfigWorkflowDataProps | null>>
+    handleSetWorkflowConfig: () => void;
+    fetchGroupedModuleAccess: () => Promise<void>;
 }
 
 interface UserProps {
@@ -33,11 +34,16 @@ interface UserProps {
 
 interface ConfigWorkflowDataProps {
     selectedActions: any[] | [];
-    assignedUsers: UserProps[] | undefined;
-    userStores: Json | undefined;
-    selectedModule: Json;
+    assignedUsers: UserProps[];
+    userStores: any[];
+    selectedModule: {
+        module_id: string;
+        module_name: string;
+        is_store_specific: boolean;
+    };
     isEditMode: boolean;
 }
+
 interface LocationsAndStoresProps {
     stores: {
         id: string;
@@ -65,7 +71,8 @@ export const ModifyWorkflowModal = ({
     groupedUsers,
     setGroupedUsers,
     setConfigWorkflowData,
-    handleSetWorkflowConfig
+    handleSetWorkflowConfig,
+    fetchGroupedModuleAccess
 }: ModifyWorkflowModalProps) => {
 
     const [data, setData] = useState<any>({});
@@ -84,7 +91,7 @@ export const ModifyWorkflowModal = ({
     const [userLocations, setUserLocations] = useState<string[]>([]);
     const [selectedWorkflowGroup, setSelectedWorkflowGroup] = useState<{ assignedUsers: UserProps[]; index?: number } | null>(null);
     const [showWorkflowUsersModal, setShowWorkflowUsersModal] = useState(false);
-    const [groupedWorkflowUsers, setGroupedWorkflowUsers] = useState([]);
+    const [groupedWorkflowUsers, setGroupedWorkflowUsers] = useState<any[]>([]);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [showRemoveStoreWorkflowModal, setShowRemoveStoreWorkflowModal] = useState(false);
     const [showConfigStoreWorkflowModal, setShowConfigStoreWorkflowModal] = useState(false);
@@ -96,12 +103,12 @@ export const ModifyWorkflowModal = ({
         setData(modifyWorkflowData)
     }, [modifyWorkflowData])
 
-    const groupedUserIds = groupedUsers.flatMap(u => u.id);
+    const groupedUserIds = groupedUsers?.flatMap(u => u.id);
 
     useEffect(() => {
 
         const fetchLocationsAndStores = async () => {
-
+            if(!groupedUserIds) return;
             try {
 
                 const { data: userLocation, error: userLocationError } = await supabase
@@ -112,7 +119,7 @@ export const ModifyWorkflowModal = ({
                 if (userLocationError) throw userLocationError;
                 if (userLocation) {
                     const mappedLoc = userLocation.map(item => item.locations)
-                    const matchingLocations = mappedLoc.reduce((commonItems, currentArray) => {
+                    const matchingLocations = mappedLoc.reduce((commonItems:any, currentArray:any) => {
                         const currentSet = new Set(currentArray);
                         return commonItems.filter((item: any) => currentSet.has(item))
                     })
@@ -156,7 +163,7 @@ export const ModifyWorkflowModal = ({
     }, [modifyWorkflowData])
 
     useEffect(() => {
-        const PermittedStores = groupedUsers[0]?.stores;
+        const PermittedStores =  groupedUsers?.[0]?.stores;
         setInitialPermittedStores(PermittedStores);
         setPermittedStores(PermittedStores);
 
@@ -177,13 +184,13 @@ export const ModifyWorkflowModal = ({
     let groupedWorkflow: any[] = [];
     if (data?.workflow?.length > 0) {
 
-        const workflowData = data?.workflow.filter(w => w.level === 1);
+        const workflowData = data?.workflow.filter((w:any) => w.level === 1);
 
         for (const workflow of workflowData) {
-            const storeIds: [] = workflow.stores.map(store => store.id || store);
-            const existingGroup: boolean = groupedWorkflow.find(item => {
+            const storeIds: [] = workflow.stores.map((store:any) => store.id || store);
+            const existingGroup = groupedWorkflow.find(item => {
                 if (item.stores.length !== storeIds.length) return false;
-                return item.stores.every((store, index) => store === storeIds[index])
+                return item.stores.every((store:any, index:number) => store === storeIds[index])
             });
             if (existingGroup) {
                 existingGroup.assigned_to.push(workflow.assigned_to)
@@ -217,7 +224,7 @@ export const ModifyWorkflowModal = ({
         fetchRoles();
     }, [modifyWorkflowData]);
 
-    function toggleLocationAccess(loc: object) {
+    function toggleLocationAccess(loc: any) {
         setPermittedLocations(prev => {
             const prevPermittedLocs = new Set(prev);
 
@@ -241,9 +248,8 @@ export const ModifyWorkflowModal = ({
         })
     }
 
-    function handleSetSelectedGroup(assignedUsers: [], index: number) {
-        console.log('workflow set', { assignedUsers: assignedUsers, index: index })
-        console.log(selectedWorkflowGroup)
+    function handleSetSelectedGroup(assignedUsers: any[], index: number) {
+
         if (selectedWorkflowGroup?.index === index) {
             setSelectedWorkflowGroup(null);
         } else {
@@ -296,10 +302,10 @@ export const ModifyWorkflowModal = ({
 
     const handleSaveConfiguration = async () => {
         try {
-
+            if(!groupedUserIds) return;
+            
             let existsInWorkflow: boolean = false;
             const removedStores = initialPermittedStores.filter(id => !permittedStores.includes(id));
-            console.log('removedStores', removedStores);
 
             const { data: stores, error } = await supabase
                 .from('workflow_config')
@@ -310,7 +316,7 @@ export const ModifyWorkflowModal = ({
             if (error) throw error;
 
             if (stores && stores.length > 0) {
-                const flattenStoresArray = Array.from(new Set(stores.flatMap(item => item.stores).map(store => store?.id ? store?.id : store)))
+                const flattenStoresArray = Array.from(new Set(stores.flatMap(item => item.stores).map((store:any) => store.id ? store.id : store)))
                 const hasWorklowConfigured = removedStores.some(store => flattenStoresArray.includes(store))
                 existsInWorkflow = hasWorklowConfigured;
                 if (existsInWorkflow) {
@@ -336,7 +342,6 @@ export const ModifyWorkflowModal = ({
     }
 
         const handleRemoveStoreWorkflow = async () => {
-        console.log('selectedWorkflowStoreData', selectedWorkflowStoreData)
         if (!selectedWorkflowStoreData) return;
 
         const assignedWorkflowUsers = selectedWorkflowStoreData.assigned_to ? selectedWorkflowStoreData.assigned_to : 
@@ -348,12 +353,10 @@ export const ModifyWorkflowModal = ({
         data?.workflow[0].stores?.filter((store:any) => store.id !== selectedWorkflowStoreData.id).map((store:any) => store.id);
         const updatedStores = stores.filter((store:any) => updatedStorIds?.includes(store.id)).map((store:any) => ({ id: store.id, name: store.name}));
 
-        console.log('data', data)
-
             const { data:UpdateWorkflowStore, error:UpdateWorkflowStoreError } = await supabase
                 .from('workflow_config')
                 .update({ stores: updatedStores})
-                .in('assigned_to', assignedWorkflowUsers)
+                .in('assigned_to', assignedWorkflowUsers!)
                 .eq('module_id', module_id)
                 .eq('action_id', action_id)
                 .eq('company_id', companyId)
@@ -378,11 +381,10 @@ export const ModifyWorkflowModal = ({
 
             toast.success("Workflow Configuration for the store removed successfully")
             setSelectedWorkflowStoreData(null);
-        
+        fetchGroupedModuleAccess();
     }
 
         const handleApplyConfiguration = async () => {
-            console.log('selectedWorkflowStoreData', selectedWorkflowStoreData)
         if (!selectedWorkflowStoreData) return;
 
         const assignedWorkflowUsers = selectedWorkflowStoreData.assigned_to ? selectedWorkflowStoreData.assigned_to : 
@@ -393,13 +395,11 @@ export const ModifyWorkflowModal = ({
         const newStore = { id: selectedWorkflowStoreData.id, name: selectedWorkflowStoreData.name };
         const currentStores = selectedWorkflowStoreData.stores ? selectedWorkflowStoreData.stores : data?.workflow[0].stores;
         const updatedStores = currentStores.some((store: any) => store.id === newStore.id) ? currentStores : [...currentStores, newStore];
-        console.log('updatedStores', updatedStores)
-        console.log('assignedWorkflowUsers', assignedWorkflowUsers);
 
             const { data:UpdateWorkflowStore, error:UpdateWorkflowStoreError } = await supabase
                 .from('workflow_config')
                 .update({ stores: updatedStores})
-                .in('assigned_to', assignedWorkflowUsers)
+                .in('assigned_to', assignedWorkflowUsers!)
                 .eq('module_id', module_id)
                 .eq('action_id', action_id)
                 .eq('company_id', companyId)
@@ -418,32 +418,31 @@ export const ModifyWorkflowModal = ({
                 }
                 return { ...workflow, stores: [...workflow.stores, newStore] };
             });
-            console.log('updatedWorkflow', updatedWorkflow)
             return { ...prevData, workflow: updatedWorkflow };
         })
             }
 
             toast.success("Workflow Configuration for the store removed successfully")
             setSelectedWorkflowStoreData(null);
-        
+        fetchGroupedModuleAccess();
         }
 
 
     const handleEditWorkflowConfig = () => {
-        let assignedUsers: UserProps[] = data.selectedModule?.is_store_specific && groupedWorkflow.length > 1 ? selectedWorkflowGroup?.assignedUsers : groupedUsers;
+        let assignedUsers: any = data.selectedModule?.is_store_specific && groupedWorkflow.length > 1 ? selectedWorkflowGroup?.assignedUsers : groupedUsers;
         const configData = {
             selectedModule: data.selectedModule,
             selectedActions: [data.selectedActions?.[0]], assignedUsers: assignedUsers, userStores: assignedUsers[0].stores, isEditMode: true
         }
         onClose(open)
-        setConfigWorkflowData(configData);
+        setConfigWorkflowData(configData as ConfigWorkflowDataProps);
         handleSetWorkflowConfig()
         handleResetState();
     }
 
     const handleDeleteWorkflow = async () => {
         if (!data.selectedModule && data.selectedActions.length === 0 && groupedUsers?.length === 0) return;
-
+        if(!groupedUserIds) return;
         const module_id = data.selectedModule.module_id;
         const action_id = data.selectedActions[0].action_id;
 
@@ -462,7 +461,6 @@ export const ModifyWorkflowModal = ({
                 throw error;
             }
 
-            console.log('data', data)
             if (data) {
 
                 const { data: modulePrm } = await supabase
@@ -472,10 +470,9 @@ export const ModifyWorkflowModal = ({
                     .eq('module_id', module_id)
                     .eq('company_id', companyId);
 
-                console.log(userId, modulePrm[0]?.permissions);
 
-                if (modulePrm) {
-                    const updatedPermissions = modulePrm[0]?.permissions.map(prm => {
+                if (modulePrm && Array.isArray(modulePrm[0].permissions)) {
+                    const updatedPermissions = modulePrm[0].permissions.map((prm:any) => {
                         if (prm.action_id === action_id) {
                             return { ...prm, requiredworkflow: false }
                         } else {
@@ -491,18 +488,20 @@ export const ModifyWorkflowModal = ({
                         .eq('company_id', companyId)
                         .select();
 
-                    console.log('updatedPermissions data', updatedPrm)
                 }
             }
 
             toast.success("Workflow Configuration Deleted Successfully")
             handleResetState();
+                    fetchGroupedModuleAccess();
         }
     }
 
     function handleResetState() {
         onClose(open);
         setModifyWorkflowData({});
+        setViewStores(false);
+        setViewWorkflow(true);
         setExpandedLocations(new Set());
         setExpandedGroups(new Set())
         setGroupedUsers([]);
@@ -557,7 +556,7 @@ export const ModifyWorkflowModal = ({
                                                 <label className="font-semibold text-sm">{data.selectedModule?.module_name}{' '}-{' '}{data.selectedActions?.[0]?.action_name}</label>
                                             </span>
                                             <div>
-                                                {groupedUsers.length > 1 ? (
+                                                {groupedUsers && groupedUsers.length > 1 ? (
                                                     <Table>
                                                         <TableBody>
 
@@ -612,7 +611,7 @@ export const ModifyWorkflowModal = ({
                                                                                 {stores.map((store:any) => {
                                                                                     const alreadyConfiguredStores = workflow.stores;
 
-                                                                                    const configuredStore = alreadyConfiguredStores.filter(s => s === store.id);
+                                                                                    const configuredStore = alreadyConfiguredStores.filter((s:any) => s === store.id);
                                                                                     const isConfiguredStore = configuredStore.length > 0;
                                                                                     const hasStoreAccess = permittedStores?.includes(store.id);
 
@@ -654,10 +653,10 @@ export const ModifyWorkflowModal = ({
 
                                                 ) : (
                                                     <div className="grid grid-cols-2 gap-1 flex-wrap">
-                                                        {stores.map((store: string) => {
-                                                            const alreadyConfiguredStores = data?.workflow[0].stores;
+                                                        {stores.map((store) => {
+                                                            const alreadyConfiguredStores = data?.workflow?.[0]?.stores;
 
-                                                            const configuredStore = alreadyConfiguredStores?.filter(s => s.id === store.id);
+                                                            const configuredStore = alreadyConfiguredStores?.filter((s:any) => s.id === store.id);
                                                             const isConfiguredStore = configuredStore?.length > 0;
                                                             const hasStoreAccess = permittedStores?.includes(store.id);
 
@@ -682,7 +681,7 @@ export const ModifyWorkflowModal = ({
                                                                             </span>
                                                                         </TooltipTrigger>
                                                                         {!hasStoreAccess &&
-                                                                            <TooltipContent>The {groupedUsers.length > 1 ? 'group of users' : 'user'} doesn't have access on this store. </TooltipContent>
+                                                                            <TooltipContent>The {groupedUsers && groupedUsers.length > 1 ? 'group of users' : 'user'} doesn't have access on this store. </TooltipContent>
                                                                         }
                                                                     </Tooltip>
                                                                 </div>
@@ -707,7 +706,7 @@ export const ModifyWorkflowModal = ({
                                     <div className="bg-white border shadow px-5 py-7 text-gray-600 rounded-lg flex flex-col justify-center items-center space-y-1">
                                         <p className="text-[15px]">The approval workflow for the action{' '}
                                             <label className="font-bold text-gray-600 text-[16px]">"{data.selectedModule?.module_name}{' '}-{' '}{data.selectedActions?.[0]?.action_name}"</label>{' '}
-                                            is currently configured and applies to <label className="font-bold text-gray-600">{groupedUsers?.length} {groupedUsers?.length > 1 ? 'users' : 'user'}</label>.</p>
+                                            is currently configured and applies to <label className="font-bold text-gray-600">{groupedUsers?.length} {groupedUsers && groupedUsers?.length > 1 ? 'users' : 'user'}</label>.</p>
                                         Any modifications made to this configuration will be applied to all this users.
                                         <span className="text-black mt-3 font-semibold">Would you like to proceed and edit this workflow configuration?</span>
                                     </div>
@@ -823,7 +822,7 @@ export const ModifyWorkflowModal = ({
                                     onClick={() => {
                                         handleEditWorkflowConfig()
                                     }}
-                                    disabled={data.selectedModule?.is_store_specific && !selectedWorkflowGroup && groupedUsers.length > 1}
+                                    disabled={data.selectedModule?.is_store_specific && !selectedWorkflowGroup && (groupedUsers && groupedUsers.length > 1)}
                                     className="py-4 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 transition-colors duration-200 text-white">
                                     Edit Workflow Config
                                 </Button>
@@ -988,7 +987,6 @@ export const ModifyWorkflowModal = ({
                                                 }
                                                 return true;
                                             } ).map((level:any, index:number) => {
-                                                console.log('level', level);
                                                 const roleName = roles.find(role => role.id === level.role_id)?.name;
 
                                             return (
@@ -1028,11 +1026,13 @@ export const ModifyWorkflowModal = ({
                                         <div className="flex flex-col gap-3 mt-5 mb-2 p-4 text-sm text-gray-600 border-t">
                                             <span className="flex items-center gap-2 w-fit">
                                             <Checkbox
+                                            checked={data?.workflow[0].override_enabled}
                                                 className="border rounded-xs border-gray-500 data-[state=checked]:bg-blue-500 data-[state=checked]:text-white data-[state=checked]:border-blue-500" />
                                             <label>Allow SuperAdmin to override all approval levels</label>
                                         </span>
                                         <span className="flex items-center gap-2 w-fit">
                                             <Checkbox
+                                            checked={data?.workflow[0].full_rejection_enabled}
                                                 className="border rounded-xs border-gray-500 data-[state=checked]:bg-blue-500 data-[state=checked]:text-white data-[state=checked]:border-blue-500" />
                                             <label>Enable Complete rejection</label>
                                         </span>

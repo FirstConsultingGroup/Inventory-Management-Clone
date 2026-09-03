@@ -3,7 +3,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Json } from "@/Utils/types/database.types";
-import { outline } from "@yudiel/react-qr-scanner";
 import { Pencil, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -16,7 +15,7 @@ interface ManageWorkflowModalProps {
     setModifyWorkflowModal: (value: React.SetStateAction<boolean>) => void;
     setModifyWorkflowData: React.Dispatch<React.SetStateAction<{}>>;
     actions:any[];
-    setConfigWorkflowData: React.Dispatch<React.SetStateAction<ConfigWorkflowDataProps | null | undefined>>
+    setConfigWorkflowData: React.Dispatch<React.SetStateAction<ConfigWorkflowDataProps | null>>
     handleSetWorkflowConfig: () => void
 }
 
@@ -33,9 +32,13 @@ interface UserProps {
 interface ConfigWorkflowDataProps {
     selectedActions: any[] | [];
     assignedUsers: UserProps[];
-    userStores: Json;
-    selectedModule: Json;
-    isEditMode :boolean;
+    userStores: any[];
+    selectedModule: {
+        module_id: string;
+        module_name: string;
+        is_store_specific: boolean;
+    };
+    isEditMode: boolean;
 }
 
 export const ManageWorkflowModal =({
@@ -51,7 +54,7 @@ export const ManageWorkflowModal =({
     handleSetWorkflowConfig
 }: ManageWorkflowModalProps) => {
 
-    const [data,setData]=useState({});
+    const [data,setData]=useState<any | null>(null);
     const [selectedWorkflowActions,setSelectedWorkflowActions] =useState<any[]>([]);
 
 
@@ -60,7 +63,7 @@ export const ManageWorkflowModal =({
       setData(manageWorkflowData)
     }, [manageWorkflowData])
     
-     function toggleAction(action: object) {
+     function toggleAction(action: any) {
         setSelectedWorkflowActions(prev => {
             let currentActions=[...prev];
             if (currentActions.some((a)=>a.action_id === action.action_id)) {
@@ -73,24 +76,23 @@ export const ManageWorkflowModal =({
         })
     }
 
-     const handleEditWorkflow = (action:object)=>{
-        const workflow = data.workflowData.filter((w) => w.action_id === action.action_id);
+     const handleEditWorkflow = (action:any)=>{
+        const workflow = data?.workflowData.filter((w:any) => w.action_id === action.action_id);
         const selectedAction ={action_id:action.action_id, action_name:action.action_name, requires_approval:action.requires_approval}
-        setGroupedUsers(data.assignedUsers);
-        setModifyWorkflowData({selectedModule :data.selectedModule, selectedActions:[selectedAction], workflow:workflow});
+        setGroupedUsers(data?.assignedUsers);
+        setModifyWorkflowData({selectedModule :data?.selectedModule, selectedActions:[selectedAction], workflow:workflow});
         handleResetState();
         setModifyWorkflowModal(true);
     }
 
     const handleConfigureWorkflow = ()=>{
          const configData = {
-        selectedModule: data.selectedModule,
-        selectedActions: selectedWorkflowActions, assignedUsers: data.assignedUsers, userStores: data.userStores, isEditMode :false
+        selectedModule: data?.selectedModule,
+        selectedActions: selectedWorkflowActions, assignedUsers: data?.assignedUsers, userStores: data?.userStores, isEditMode :false
         }
         setConfigWorkflowData(configData);
         handleResetState();
         handleSetWorkflowConfig()
-        console.log('configData',configData)
     }
 
         function handleResetState(){
@@ -108,12 +110,12 @@ export const ManageWorkflowModal =({
                         <DialogTitle className="text-blue-700 ps-1 my-2">
                             <span className="flex items-center gap-2">
                                 <Settings className="w-5 h-5"/>
-                                <span>Manage Workflows : {data.selectedModule?.module_name}</span>
+                                <span>Manage Workflows : {data?.selectedModule?.module_name}</span>
                             </span>
                         </DialogTitle>
                     </DialogHeader>
                     <div className="rounded-md shadow border overflow-hidden my-8 mx-6">
-                        {data.available_actions && data.available_actions.some(action=>action.requires_approval) ?
+                        {data?.available_actions && data?.available_actions.some((action :any) =>action.requires_approval) ?
                         (
                             <Table>
                                                                                     <TableHeader>
@@ -125,7 +127,7 @@ export const ManageWorkflowModal =({
                                                                                         </TableRow>
                                                                                     </TableHeader>
                                                                                     <TableBody> 
-                                                                                        {data.available_actions.filter(action=>action.requires_approval).map(a => {
+                                                                                        {data?.available_actions.filter((action:any)=>action.requires_approval).map((a :any)=> {
                                                                                         const action_name = actions?.filter((action) => action.id === a.action_id).map(item => item.action_name)
                                                                                         const hasWorkflowConfig = a.requiredworkflow;
                                                                                         const isSelected = selectedWorkflowActions.some((action)=> action.action_id=== a.action_id)
@@ -174,7 +176,7 @@ export const ManageWorkflowModal =({
                                                                                     </Table>
                         ):(
                             <div className="flex justify-center items-center py-10">
-                                <span className="text-gray-500 text-[15px]">Actions in this module doesn't requires approval</span>
+                                <span className="text-gray-500 text-[15px]">Permitted actions in this module doesn't requires approval</span>
                             </div>
                         )
                     }

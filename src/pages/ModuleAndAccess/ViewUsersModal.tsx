@@ -36,7 +36,7 @@ return(
                         </DialogHeader>
 
                         <div className="max-h-[500px] overflow-y-auto shadow mr-1">
-                            {groupedUsers.length === 0 ? (
+                            {groupedUsers && groupedUsers.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-[250px] text-center">
                                     <p className="text-gray-500 font-medium">
                                         No Users found
@@ -54,7 +54,7 @@ return(
                                     </TableHeader>
 
                                     <TableBody>
-                                        {groupedUsers.map((u) => (
+                                        {groupedUsers && groupedUsers.map((u) => (
                                             <TableRow key={u.id} className="">
                                                 <TableCell className="font-medium">
                                                     <div className="w-9 h-8 rounded-full p-1 bg-blue-100 flex items-center justify-center text-blue-700 font-medium">

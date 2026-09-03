@@ -81,11 +81,15 @@ interface GroupedSectionProps {
 }
 
 interface ConfigWorkflowDataProps {
-    selectedActions: any[] | [];
+    selectedActions: ActionProps[];
     assignedUsers: UserProps[];
-    userStores: Json;
-    selectedModule: Json;
-    isEditMode : boolean;
+    userStores: string[];
+    selectedModule: {
+        module_id: string;
+        module_name: string;
+        is_store_specific: boolean;
+    };
+    isEditMode: boolean;
 }
 
 export const ModuleAccess = () => {
@@ -127,11 +131,12 @@ export const ModuleAccess = () => {
     const [loadPermission, setLoadPermission] = useState<boolean>(false);
     const [selectedAction, setSelectedAction] = useState<ActionProps | null>();
     const [selectedMultipleActions, setSelectedMultipleActions] = useState<ActionProps[]>([]);
-    const [configWorkflowData, setConfigWorkflowData] = useState<ConfigWorkflowDataProps | null>();
+    const [configWorkflowData, setConfigWorkflowData] = useState<ConfigWorkflowDataProps | null>(null);
     const [manageWorkflowData, setManageWorkflowData] = useState({});
-    const [workflowConfigActions, setWorkflowConfigActions] = useState([]);
+    const [groupedAccessLevel,setGroupedAccessLevel] = useState<any[]>([]);
     const [modifyWorkflowData, setModifyWorkflowData] = useState({});
     const [loading, setLoading] = useState(false);
+    const [filteredTree,setFilteredTree] = useState<any[]>([]);
 
 
     useEffect(() => {
@@ -323,26 +328,72 @@ export const ModuleAccess = () => {
     }, [parentModules, groupedSections])
 
 
-    let filteredTree = []
-    if (parentId !== "all") {
-        const parentModule = parentModules.find((p) => p.id === parentId)
-        filteredTree.push({
-            parentModule: parentModule?.module_name,
-            parentId: parentModule?.id,
-            modules: modules
-        })
-
-    } else {
-        parentModules.map((p) => {
-            const Modules = modules.filter((m) => m.parent_id === p.id)
-
-            filteredTree.push({
-                parentModule: p.module_name,
-                parentId: p.id,
-                modules: Modules
+    useEffect(() => {
+      let filteredtree=[];
+        if (parentId !== "all" && moduleId == "all") {
+            const parentModule = parentModules.find((p) => p.id === parentId)
+                filteredtree.push({
+                    parentModule: parentModule?.module_name,
+                    parentId: parentModule?.id,
+                    modules: modules
+                })
+    
+        } else if(moduleId !== "all"){
+            const module = modules.find((m)=>m.id === moduleId)
+            const parentModule = parentModules.find((p) => p.id === module?.parent_id)
+                filteredtree.push({
+                    parentModule: parentModule?.module_name,
+                    parentId: parentModule?.id,
+                    modules: [module]
+                })
+        } else {
+            parentModules.map((p) => {
+                const Modules = modules.filter((m) => m.parent_id === p.id)
+    
+                filteredtree.push({
+                    parentModule: p.module_name,
+                    parentId: p.id,
+                    modules: Modules
+                })
             })
-        })
-    }
+        }
+
+        setFilteredTree(filteredtree)
+    }, [groupedSections])
+    
+
+    useEffect(() => {
+       const updatedAccesslevel = groupedSections.map(grp => {
+             const permissions = grp.permissions_data;
+             let permittedActionCount:number =0;
+             let permittedSubModuleCount:number =0;
+             let totalPermissionCount:number = 0;
+            filteredTree.forEach(item => {
+                item.modules.forEach((m:any)=>{
+                let modulePermissionCount = m.available_actions.length + m.selected_submodules.length;
+                totalPermissionCount = totalPermissionCount + modulePermissionCount
+                const modulePermission = permissions?.flatMap((module) => module).filter((mod) => mod.module_id === m.id);
+                let permittedActions: any[] = [];
+                let permittedSubModules: any[] = [];
+                if (modulePermission && modulePermission.length > 0) {
+                permittedActions = modulePermission[0]?.permissions.map(actions => actions)
+                if (modulePermission[0]?.submodule_permissions) {
+                 permittedSubModules = modulePermission[0]?.submodule_permissions
+                }
+                }
+                permittedActionCount = permittedActionCount + permittedActions.length;
+                permittedSubModuleCount = permittedSubModuleCount + permittedSubModules.length;
+            })
+        });
+        let grantedPermissions = permittedActionCount + permittedSubModuleCount;
+        let deniedPermissions = totalPermissionCount - grantedPermissions;
+        let accessPercent = Math.round((grantedPermissions/totalPermissionCount) * 100)
+        return {granted: grantedPermissions,denied: deniedPermissions, accessPercent: accessPercent};
+    })
+    setGroupedAccessLevel(updatedAccesslevel)
+    }, [groupedSections]);
+
+    
 
     const fetchGroupedModuleAccess = async () => {
         try {
@@ -375,7 +426,6 @@ export const ModuleAccess = () => {
                     });
                 })
             });
-            console.log('InitialPermissionsList', InitialPermissionsList)
             setInitialPermissions(InitialPermissionsList);
 
             setExpandedGroup(new Set([0]));
@@ -401,12 +451,12 @@ export const ModuleAccess = () => {
         if (!actionId || !moduleId) return;
         let permissionData = groupedSections.filter(grp => grp.signature === signature).flatMap(sec => sec.permissions_data)
         let newPermissionData: any[] = [];
-        if (permissionData[0] !== null) {
+        if (permissionData !== null) {
             let module = permissionData.find(prm => prm?.module_id === moduleId);
             if (module) {
                 const isPermitted = module.permissions?.find(prm => prm.action_id === actionId)
                 if (isPermitted) {
-                    permissionData = permissionData.filter(prm => prm?.module_id !== moduleId)
+                    newPermissionData = permissionData.filter(prm => prm?.module_id !== moduleId)
                 }
             } else {
                 const permission = { action_id: actionId, isAllowed: true, requiredworkflow: false }
@@ -459,7 +509,6 @@ export const ModuleAccess = () => {
         let newPermissionData: any[] = [];
 
         if (permissionData[0] !== null) {
-            console.log('permissionData', permissionData)
             let module = permissionData.find(prm => prm.module_id === moduleId)
             if (module) {
                 if (module.permissions.length === actionId.length && ((module.submodule_permissions?.length === subModuleId?.length) || (typeof (module.submodule_permissions) != typeof (subModuleId)))) {
@@ -473,7 +522,6 @@ export const ModuleAccess = () => {
                     }
                     if (subModuleId) {
                         const CurrentSubPermissions = [...(module?.submodule_permissions || [])];
-                        console.log('CurrentSubPermissions', CurrentSubPermissions)
                         for (const id of subModuleId) {
                             const isPermitted = CurrentSubPermissions.some(prm => prm.sub_module_id === id)
                             if (!isPermitted) {
@@ -641,12 +689,8 @@ export const ModuleAccess = () => {
                 .eq('company_id', companyId)
 
             if (workflowError) throw workflowError;
-            if (existingWorkflowData) {
-                console.log('workflowData', existingWorkflowData)
-            }
 
             const currentPermissions = flattenGroupSections();
-            console.log('currentPermissions', currentPermissions)
             const upserts: any[] = [];
             let WorkflowsToDeactivate: any[] = [];
             let WorkflowsToActivate: any[] = [];
@@ -665,12 +709,17 @@ export const ModuleAccess = () => {
 
             currentPermissions.forEach((currentItem) => {
                 const oldItem = initialPermissions.find((old) => old.user_id === currentItem.user_id && old.module_id === currentItem.module_id)
+                let addedActionIds: any[] =[];
+                let removedActionIds: any[]=[];
+                if(oldItem){
+                    const oldActionIds: any[] = oldItem?.permissions.map((prm: any) => prm.action_id) || [];
+                    const currentActionIds: any[] = currentItem.permissions.map((prm: any) => prm.action_id) || [];
 
-                const oldActionIds: string[] = oldItem?.permissions.map((prm: any) => prm.action_id) || []
-                const currentActionIds: string[] = currentItem.permissions.map((prm: any) => prm.action_id) || []
-
-                const removedActionIds: any[] = oldActionIds.filter(id => !currentActionIds.includes(id));
-                const addedActionIds: any[] = currentActionIds.filter(id => !oldActionIds.includes(id));
+                    removedActionIds = oldActionIds.filter(id => !currentActionIds.includes(id));
+                    addedActionIds = currentActionIds.filter(id => !oldActionIds.includes(id));
+                }else{
+                    addedActionIds = currentItem.permissions.map((prm: any) => prm.action_id) || [];
+                }
 
                 if (removedActionIds.length > 0) {
                     const activeWorkflows = existingWorkflowData.filter(w =>
@@ -758,12 +807,6 @@ export const ModuleAccess = () => {
                 }
             })
 
-            console.log('WorkflowsToActivate', WorkflowsToActivate)
-            console.log('WorkflowsToDeactivate', WorkflowsToDeactivate)
-
-            // console.log('upserts',upserts)
-            // console.log('deletes',deletes)
-
             const ActivatePayload = {
                 company_id: companyId,
                 upserts: upserts.map(item =>
@@ -772,37 +815,32 @@ export const ModuleAccess = () => {
                 workflow_updates: WorkflowsToActivate,
                 is_active: true
             }
-            const jsonActivatePayload = JSON.stringify(ActivatePayload)
-            // console.log('jsonActivatePayload',jsonActivatePayload)
 
-            // const { data: ActivateData, error: ActivateError } = await supabase.rpc("bulk_update_module_permissions", {
-            //     p_payload: jsonActivatePayload
-            // })
+            const { data: ActivateData, error: ActivateError } = await supabase.rpc("bulk_update_module_permissions", {
+                p_payload: ActivatePayload
+            })
 
-            // if (ActivateError) throw ActivateError;
+            if (ActivateError) throw ActivateError;
 
             const DeActivatePayload = {
                 company_id: companyId,
-                upserts: upserts.map(item =>
-                    ({ ...item, submodule_permissions: item.submodule_permissions ?? [] })),
-                deletes: deletes,
+                upserts: [],
+                deletes: [],
                 workflow_updates: WorkflowsToDeactivate,
                 is_active: false
             }
-            const jsonDeActivatePayload = JSON.stringify(DeActivatePayload)
-            // console.log('jsonDeActivatePayload',jsonDeActivatePayload)
 
-            // const { data: DeActivateData, error: DeActivateError } = await supabase.rpc("bulk_update_module_permissions", {
-            //     p_payload: jsonDeActivatePayload
-            // })
+            const { data: DeActivateData, error: DeActivateError } = await supabase.rpc("bulk_update_module_permissions", {
+                p_payload: DeActivatePayload
+            })
 
-            // if (DeActivateError) throw DeActivateError;
+            if (DeActivateError) throw DeActivateError;
 
-            // if (ActivateData && DeActivateData) {
-            //     console.log('saved data', ActivateData, DeActivateData)
-            //     toast.success("Permissions Saved Successfully");
-            //     fetchGroupedModuleAccess();
-            // }
+            if (ActivateData && DeActivateData) {
+                toast.success("Permissions Saved Successfully");
+                setInitialPermissions([])
+                fetchGroupedModuleAccess();
+            }
 
         } catch (error) {
             console.log("Error saving permission changes", error);
@@ -1022,6 +1060,7 @@ export const ModuleAccess = () => {
                                                             }
                                                             const isGroupOpen = expandedGroup.has(index);
                                                             const permissions = grp.permissions_data;
+                                                            const accessLevel = groupedAccessLevel[index];
 
                                                             return (
                                                                 <div key={index} className="py-2">
@@ -1045,7 +1084,7 @@ export const ModuleAccess = () => {
                                                                                                 e.preventDefault();
                                                                                                 setShowUsersModal(true);
                                                                                                 setGroupedUsers(grp.users);
-                                                                                            }} className="text-blue-500 hover:underline hover:text-blue-600">View Users</span>
+                                                                                            }} className="text-blue-500 hover:underline hover:text-blue-600 cursor-pointer">View Users</span>
                                                                                         ) : user?.email}</span>
                                                                                     </div>
                                                                                     <span className="bg-green-100 text-green-700 font-semibold text-xs mt-0.5 px-3 rounded-lg py-1">{grp.users.length}{' '}users</span>
@@ -1063,17 +1102,17 @@ export const ModuleAccess = () => {
                                                                             <div className="rounded-md border p-4 space-y-4 mx-1">
                                                                                 <div className="flex items-center justify-end">
 
-                                                                                    <div className="w-[50%] grid grid-cols-[30%_68%] gap-3">
+                                                                                    <div className="w-[52%] grid grid-cols-[30%_68%] gap-3">
                                                                                         <div className=" text-xs font-semibold text-gray-600 border px-2 py-1 rounded-md shadow"><span className=" text-green-600 mr-2">Action</span>Requires Workflow</div>
                                                                                         <div className="flex gap-2 items-center text-xs border px-2 py-1 rounded-md shadow">
-                                                                                            <span className="items-center uppercase text-[12px] text-gray-500 font-semibold">access level :</span>
-                                                                                            <Badge className="bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300 py-0">
-                                                                                                granted
+                                                                                            <span className="items-center uppercase text-[12px] text-gray-500 font-semibold">access level : </span>
+                                                                                            <Badge className="bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300 py-0 text-[11px]">
+                                                                                              {accessLevel.granted}  granted
                                                                                             </Badge>
-                                                                                            <Badge className="bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300 py-0">
-                                                                                                denied
+                                                                                            <Badge className="bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300 py-0 text-[11px]">
+                                                                                               {accessLevel.denied} denied
                                                                                             </Badge>
-                                                                                            <Progress value={56} className="max-w-[100px]" /><span>56%</span>
+                                                                                            <Progress value={accessLevel.accessPercent} className="max-w-[90px] h-1.5" /><span className="text-blue-800 font-bold">{accessLevel.accessPercent}%</span>
                                                                                         </div>
                                                                                     </div>
                                                                                 </div>
@@ -1106,7 +1145,7 @@ export const ModuleAccess = () => {
                                                                                                                 </TableCell>
                                                                                                             </TableRow>
                                                                                                             {expandedParent && (
-                                                                                                                item.modules.map((m, moduleIndex) => {
+                                                                                                                item.modules.map((m:any, moduleIndex:number) => {
                                                                                                                     let expandedModule;
                                                                                                                     if (m.selected_submodules.length > 0) {
 
@@ -1127,7 +1166,7 @@ export const ModuleAccess = () => {
                                                                                                                         if (modulePermission[0]?.submodule_permissions) {
                                                                                                                             permittedSubModules = modulePermission[0]?.submodule_permissions
                                                                                                                         }
-                                                                                                                        for (const a of m.available_actions.slice(1)) {
+                                                                                                                        for (const a of m.available_actions.slice(1) as any) {
                                                                                                                             const permittedAction = permittedActions.flatMap(actions => actions).find((action) => action.action_id === a.action_id)
                                                                                                                             availableActions.push({
                                                                                                                                 ...a,
@@ -1137,7 +1176,7 @@ export const ModuleAccess = () => {
                                                                                                                         }
                                                                                                                     }
 
-                                                                                                                    const moduleAccessAction = m.available_actions.slice(0, 1);
+                                                                                                                    const moduleAccessAction:any = m.available_actions.slice(0, 1);
                                                                                                                     const ModuleAccessPermission = permittedActions.flatMap(actions => actions).filter((action) => (action.action_id === moduleAccessAction[0]?.action_id) && (action.isAllowed))
                                                                                                                     const isModuleAccessEnabled = ModuleAccessPermission.length > 0;
 
@@ -1161,7 +1200,7 @@ export const ModuleAccess = () => {
                                                                                                                                                         <span className="flex items-center gap-2">
                                                                                                                                                             <Checkbox
                                                                                                                                                                 checked={m.selected_submodules.length === permittedSubModules.length}
-                                                                                                                                                                onCheckedChange={() => handleToggleAllAction(grp.signature, m.id, [moduleAccessAction[0]?.action_id], m.selected_submodules.map(s => s.id))}
+                                                                                                                                                                onCheckedChange={() => handleToggleAllAction(grp.signature, m.id, [moduleAccessAction[0]?.action_id], m.selected_submodules.map((s:any) => s.id))}
                                                                                                                                                                 className="data-[state=checked]:bg-white data-[state=checked]:text-gray-800 data-[state=checked]:border-gray-500" />
                                                                                                                                                             <label className="text-[13px] text-gray-500 font-semibold">All</label>
                                                                                                                                                         </span>
@@ -1184,12 +1223,10 @@ export const ModuleAccess = () => {
                                                                                                                                                     <button
                                                                                                                                                 disabled={!modulePermission || modulePermission.length === 0}
                                                                                                                                                 onClick={() => {
-                                                                                                                                                    console.log('modulePermission', modulePermission)
                                                                                                                                                     setManageWorkflowModal(true)
                                                                                                                                                     const data = { selectedModule: { module_id: m.id, module_name: m.module_name, is_store_specific: m.is_store_specific },
                                                                                                                                                      available_actions: availableActions, assignedUsers: grp.users, userStores: grp.users[0].stores,workflowData:workflowData }
                                                                                                                                                     setManageWorkflowData(data)
-                                                                                                                                                    console.log('setManageWorkflowData', data)
                                                                                                                                                 }} className="">
                                                                                                                                                 <Settings className={`h-6 w-6 p-1 rounded-full ${!modulePermission ||modulePermission.length === 0 ? 'text-[#bfbfbf]' : 'text-gray-500  hover:bg-blue-100 hover:text-blue-500 transition duration-200 '}`} />
                                                                                                                                             </button>
@@ -1255,13 +1292,13 @@ export const ModuleAccess = () => {
                                                                                                                                                         <Checkbox
                                                                                                                                                             checked={m.available_actions?.length === permittedActions.length}
                                                                                                                                                             onCheckedChange={() => {
-                                                                                                                                                                handleToggleAllAction(grp.signature, m.id, m.available_actions?.map(a => a?.action_id), null)
+                                                                                                                                                                handleToggleAllAction(grp.signature, m.id, m.available_actions?.map((a:any) => a?.action_id), null)
                                                                                                                                                                 const unChecked = m.available_actions?.length !== permittedActions.length;
                                                                                                                                                                 if (unChecked) {
-                                                                                                                                                                    const isRequireWorkflowActions = m.available_actions?.filter((a) => a?.requires_approval === true)
+                                                                                                                                                                    const isRequireWorkflowActions = m.available_actions?.filter((a:any) => a?.requires_approval === true)
                                                                                                                                                                     if (isRequireWorkflowActions && isRequireWorkflowActions.length > 0) {
                                                                                                                                                                         setMultipleActionModal(true);
-                                                                                                                                                                        const actionData = isRequireWorkflowActions.map((action) => {
+                                                                                                                                                                        const actionData = isRequireWorkflowActions.map((action:any) => {
                                                                                                                                                                             const action_name = actions.filter((a) => a.id === action?.action_id).map((item) => item.action_name)
 
                                                                                                                                                                             return (
@@ -1273,7 +1310,7 @@ export const ModuleAccess = () => {
                                                                                                                                                                             selectedModule: { module_id: m.id, module_name: m.module_name, is_store_specific: m.is_store_specific },
                                                                                                                                                                             selectedActions: [], assignedUsers: grp.users, userStores: grp.users[0].stores, isEditMode :false
                                                                                                                                                                         }
-                                                                                                                                                                        setConfigWorkflowData(configData)
+                                                                                                                                                                        setConfigWorkflowData(configData as ConfigWorkflowDataProps)
                                                                                                                                                                     }
                                                                                                                                                                 }
                                                                                                                                                             }}
@@ -1290,7 +1327,7 @@ export const ModuleAccess = () => {
                                                                                                                                                 </div>
                                                                                                                                                 <div className="flex items-center flex-wrap gap-4 space-x-2 ps-5 border-l-1">
                                                                                                                                                     {m.available_actions && m.available_actions.length > 1 &&
-                                                                                                                                                        m.available_actions.slice(1).map((a) => {
+                                                                                                                                                        m.available_actions.slice(1).map((a:any) => {
                                                                                                                                                             const action_name = actions.filter((action) => action.id === a.action_id).map((item) => item.action_name)
                                                                                                                                                             const action = availableActions.filter((action) => action.action_id === a.action_id);
                                                                                                                                                             const hasWorkflowConfig = action[0]?.requiredworkflow;
@@ -1321,7 +1358,7 @@ export const ModuleAccess = () => {
                                                                                                                                                                                                 selectedModule: { module_id: m.id, module_name: m.module_name, is_store_specific: m.is_store_specific },
                                                                                                                                                                                                 selectedActions: [actionData], assignedUsers: grp.users, userStores: grp.users[0].stores,isEditMode :false
                                                                                                                                                                                             }
-                                                                                                                                                                                            setConfigWorkflowData(configData)
+                                                                                                                                                                                            setConfigWorkflowData(configData as ConfigWorkflowDataProps)
                                                                                                                                                                                         }
                                                                                                                                                                                     }
                                                                                                                                                                                 }}
@@ -1362,12 +1399,11 @@ export const ModuleAccess = () => {
                                                                                                                                                     <button
                                                                                                                                                 disabled={!modulePermission || modulePermission.length === 0}
                                                                                                                                                 onClick={() => {
-                                                                                                                                                    console.log('modulePermission', modulePermission)
                                                                                                                                                     setManageWorkflowModal(true)
                                                                                                                                                     const data = { selectedModule: { module_id: m.id, module_name: m.module_name, is_store_specific: m.is_store_specific },
-                                                                                                                                                     available_actions: availableActions, assignedUsers: grp.users, userStores: grp.users[0].stores,workflowData:workflowData }
+                                                                                                                                                     available_actions: availableActions.filter(action => action.isAllowed), 
+                                                                                                                                                     assignedUsers: grp.users, userStores: grp.users[0].stores,workflowData:workflowData }
                                                                                                                                                     setManageWorkflowData(data)
-                                                                                                                                                    console.log('setManageWorkflowData', data)
                                                                                                                                                 }} className="">
                                                                                                                                                 <Settings className={`h-6 w-6 p-1 rounded-full ${!modulePermission || modulePermission.length === 0 ? 'text-[#bfbfbf]' : 'text-gray-500  hover:bg-blue-100 hover:text-blue-500 transition duration-200 '}`} />
                                                                                                                                             </button>
@@ -1486,11 +1522,11 @@ export const ModuleAccess = () => {
                                                 <Checkbox
                                                     checked={configWorkflowData?.selectedActions.some(a => a.action_id === action.action_id)}
                                                     onCheckedChange={() => {
-                                                        setConfigWorkflowData(prev => {
+                                                        setConfigWorkflowData((prev : any) => {
                                                             let currentActions = prev?.selectedActions || [];
-                                                            const exists = currentActions?.some(a => a.action_id === action.action_id)
+                                                            const exists = currentActions?.some((a:ActionProps) => a.action_id === action.action_id)
                                                             const updatedActions = exists ?
-                                                                currentActions.filter(a => a.action_id !== action.action_id) :
+                                                                currentActions.filter((a:ActionProps) => a.action_id !== action.action_id) :
                                                                 [...currentActions, action]
 
                                                             return { ...prev, selectedActions: updatedActions }
@@ -1558,6 +1594,7 @@ export const ModuleAccess = () => {
                     setGroupedUsers={setGroupedUsers}
                     setConfigWorkflowData={setConfigWorkflowData}
                     handleSetWorkflowConfig={handleSetWorkflowConfig}
+                    fetchGroupedModuleAccess={fetchGroupedModuleAccess}
                 />
             </>
         )
@@ -1569,6 +1606,7 @@ export const ModuleAccess = () => {
             setShowWorkflowConfig={setShowWorkflowConfig}
             configWorkflowData={configWorkflowData}
             setConfigWorkflowData={setConfigWorkflowData}
+            fetchGroupedModuleAccess={fetchGroupedModuleAccess}
         />
     }
 
