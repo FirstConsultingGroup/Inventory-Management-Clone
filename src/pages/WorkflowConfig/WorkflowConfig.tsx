@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Json } from "@/Utils/types/database.types"
 import { supabase } from "@/Utils/types/supabaseClient"
-import { ArrowLeft, BadgeInfoIcon, Check, ChevronUp, Edit, Plus,Trash2, X } from "lucide-react"
+import { ArrowLeft, BadgeInfoIcon, Check, ChevronUp, Edit, Eye, EyeIcon, Plus,Trash2, Workflow, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import toast from "react-hot-toast"
 
@@ -88,6 +88,8 @@ export const WorkflowConfig = ({
 }: WorkflowConfigProps) => {
 
     const [levels, setLevels] = useState<LevelDataProps[]>([]);
+    const [groupedWorkflows,setGroupedWorkflows] = useState<any[]>([]);
+    const [selectedGroup,setSelectedGroup] = useState<any>({});
     const [initialLevels, setInitialLevels] = useState<LevelDataProps[]>([]);
     const [roles, setRoles] = useState<any[]>([]);
     const [users, setUsers] = useState<UserProps[]>([]);
@@ -100,18 +102,20 @@ export const WorkflowConfig = ({
     const [storeName, setStoreName] = useState("");
     const [stores, setStores] = useState<any[]>([]);
     const [storeAccessData, setStoreAccessData] = useState<any | null>();
+    const [workflowAssignedUserData, setWorkflowAssignedUserData] = useState<any | null>();
     const [showApprovalUsersModal, setShowApprovalUsersModal] = useState(false);
     const [showApprovalUsersList, setShowApprovalUsersList] = useState(false);
     const [approvalUsersList, setapprovalUsersList] = useState<any[]>([]);
     const [showStoresList, setShowStoresList] = useState(false);
     const [showAssignedUsersModal, setShowAssignedUsersModal] = useState(false);
+    const [showWorkflowAssignedUsersModal, setShowWorkflowAssignedUsersModal] = useState(false);
     const [showAvailableActionsModal, setShowAvailableActionsModal] = useState(false);
     const [showConfirmReturnModal, setShowConfirmReturnModal] = useState(false);
     const [showConfirmStoreAccessModal, setShowConfirmStoreAccessModal] = useState(false);
     const [configData, setConfigData] = useState<ConfigWorkflowDataProps | null>();
     const [updatingStoreAccess, setUpdatingStoreAccess] = useState(false);
     const [temporaryLevelData, setTemporaryLevelData] = useState<any>({
-        level: levels.length + 1,
+        level: levels?.length + 1,
         role_id: null,
         approval_users: [],
         multiple_approvers_enabled: false,
@@ -242,23 +246,88 @@ export const WorkflowConfig = ({
         if (!editMode || !configData) return;
         
         const module_id = configData.selectedModule.module_id;
-        const action_id = configData.selectedActions[0].action_id;
-        const assignedUserId = configData.assignedUsers?.[0].id
-        
-            const { data, error } = await supabase
+        const assignedUsers:any = configData?.assignedUsers.map(user =>user.id);
+        const actionIds:any = configData?.selectedActions.map(action => action.action_id);
+
+            const { data:workflowData, error:workflowError } = await supabase
                 .from('workflow_config')
                 .select('*')
-                .eq('assigned_to', assignedUserId)
+                .in('assigned_to', assignedUsers)
                 .eq('module_id', module_id)
-                .eq('action_id', action_id)
+                .in('action_id', actionIds)
                 .eq('company_id', companyId)
-                .eq('is_active', true)
-                .order('level', { ascending: true });
+                .eq('is_active', true);
 
-            if (error) throw error;
+            if (workflowError) throw workflowError;
+            let groupedWorkflow:any =[];
+            for (const user of assignedUsers){
+                const userWorkflows:LevelDataProps[] | any = workflowData.filter((w)=>w.assigned_to === user);
+                if(groupedWorkflow.length === 0){
+                    groupedWorkflow.push({grp1 : {assignedUsers: [user],
+                         override_enabled:userWorkflows[0].override_enabled ,
+                         full_rejection_enabled:userWorkflows[0].full_rejection_enabled,
+                         can_edit_document:userWorkflows[0].can_edit_document,
+                         levels : userWorkflows}})
+                    }else {
+                         const matchingGrp = groupedWorkflow.find((grpObj :any)=>{
+                            const grp = Object.values(grpObj)[0] as any;
+
+                            const mainKeysMatch = grp.override_enabled === userWorkflows[0].override_enabled && 
+                            grp.full_rejection_enabled === userWorkflows[0].full_rejection_enabled &&
+                            grp.can_edit_document === userWorkflows[0].can_edit_document;
+
+                            if(!mainKeysMatch) return false;
+                            if(grp.levels.length !== userWorkflows.length) return false;
+
+                            const allLevelsMatch = grp.levels.every((grpLevel :LevelDataProps)=> {
+                                const workflowLevel:LevelDataProps = userWorkflows.find((workflow:LevelDataProps) => workflow.level === grpLevel.level);
+                                if(!workflowLevel) return false;
+                                const workflowApprovalUsers:any = workflowLevel.approval_users;
+                                const grpApprovalUsers:any = grpLevel.approval_users;
+                                if(
+                                   workflowLevel.multiple_approvers_enabled !== grpLevel.multiple_approvers_enabled ||
+                                   workflowLevel.status !== grpLevel.status ||
+                                   workflowLevel.role_id !== grpLevel.role_id ||
+                                   workflowApprovalUsers.length !== grpApprovalUsers.length ||
+                                   !workflowApprovalUsers.every((id:any) => 
+                                        grpApprovalUsers.includes(id))
+                                ) return false;
+
+                                return true;
+                            })
+
+                            if(!allLevelsMatch) return false;
+
+                            return true;
+                         });
+
+                         if(matchingGrp){
+                            const grpKey = Object.keys(matchingGrp)[0];
+                            matchingGrp[grpKey].assignedUsers.push(user);
+                         }else{
+                            groupedWorkflow.push({[`grp${groupedWorkflow.length + 1}`] : 
+                         {assignedUsers: [user],
+                         override_enabled:userWorkflows[0].override_enabled ,
+                         full_rejection_enabled:userWorkflows[0].full_rejection_enabled,
+                         can_edit_document:userWorkflows[0].can_edit_document,
+                         levels : userWorkflows}
+                            })
+                         }
+                    }
+                }
+                setGroupedWorkflows(groupedWorkflow);
+                if(groupedWorkflow.length > 1){
+                    setSelectedGroup(groupedWorkflow[0]);
+                }
+                const grpObj = groupedWorkflow[0];
+                let grp;
+                if(grpObj){
+                    grp = Object.values(grpObj)[0] as any;
+                }
             
-            setLevels(data as unknown as LevelDataProps[])
-            setInitialLevels(data as unknown as LevelDataProps[])
+            const Levels = grp?.levels.sort((a:LevelDataProps,b:LevelDataProps)=> a.level - b.level);
+            setLevels(Levels as LevelDataProps[])
+            setInitialLevels(Levels as LevelDataProps[])
             setTemporaryLevelData((prev:any) => {
                 return { ...prev, level: 0 }
             })
@@ -270,6 +339,24 @@ export const WorkflowConfig = ({
     }, [editMode, configData])
 
     useEffect(() => {
+                 if(!selectedGroup) return;
+                 let grp;
+                if(selectedGroup){
+                    grp = Object.values(selectedGroup)[0] as any;
+                }
+                
+            const Levels = grp?.levels.sort((a:LevelDataProps,b:LevelDataProps)=> a.level - b.level);
+            setInitialLevels(Levels as LevelDataProps[])
+            setLevels(Levels as LevelDataProps[])
+            setTemporaryLevelData((prev:any) => {
+                return { ...prev, level: 0 }
+            })
+    }, [selectedGroup])
+    
+
+    useEffect(() => {
+                if(!initialLevels) return;
+
         setOverride_enabled(initialLevels[0]?.override_enabled ?? false);
         setFullRejectionEnabled(initialLevels[0]?.full_rejection_enabled ?? false);
         setCan_edit_document(initialLevels[0]?.can_edit_document ?? false);
@@ -277,7 +364,7 @@ export const WorkflowConfig = ({
         if(!configData?.userStores || stores.length === 0) return;
         if(editMode){
             const initialLevelStores:any = initialLevels[0]?.stores
-            const initialWorkflowStores = initialLevelStores ? Array.from(initialLevelStores).map((store: any) => store?.id) : [];
+            const initialWorkflowStores = initialLevelStores ? Array.from(initialLevelStores).map((store: any) => store?.id || store) : [];
             const initialStoreIds = stores.filter(store => initialWorkflowStores?.includes(store?.id)).map(store => store?.id);
             if(initialWorkflowStores.length > 0){
                 setSelectedStores(initialWorkflowStores)
@@ -289,7 +376,9 @@ export const WorkflowConfig = ({
     }, [stores,configData?.userStores,initialLevels,editMode])
 
     useEffect(() => {
+        if(!initialLevels) return;
       if(editMode){
+
         setLevels(initialLevels)
         setTemporaryLevelData((prev:any) => {
                 return { ...prev, level: 0 }
@@ -310,7 +399,7 @@ export const WorkflowConfig = ({
         setFullRejectionEnabled(false);
         setCan_edit_document(false);
       }
-    }, [selectedStores])
+    }, [selectedStores,initialLevels])
     
 
 
@@ -340,19 +429,19 @@ export const WorkflowConfig = ({
 
     const filteredRoles = useMemo(() => {
 
-        const assignedRoles = levels.filter(lvl => lvl.level !== temporaryLevelData.level).map(lvl => lvl.role_id).filter(Boolean);
-        return (roles.filter(role => !assignedRoles.includes(role.id)))
+        const assignedRoles = levels?.filter(lvl => lvl.level !== temporaryLevelData.level).map(lvl => lvl.role_id).filter(Boolean);
+        return (roles.filter(role => !assignedRoles?.includes(role.id)))
 
     }, [roles, levels, temporaryLevelData.level]);
 
     function handleUpdateLevelData(addLevel?: boolean | undefined, updateData?: boolean) {
 
-        const updatedLevelData = levels.map((l) => l.level === temporaryLevelData.level ? temporaryLevelData : l);
+        const updatedLevelData = levels?.map((l) => l.level === temporaryLevelData.level ? temporaryLevelData : l);
 
         if (addLevel == true) {
             setLevels((updatedLevelData : any) => {
                 return [...updatedLevelData, {
-                    level: levels.length + 1,
+                    level: levels?.length + 1,
                     role_id: null,
                     approval_users: [],
                     multiple_approvers_enabled: false,
@@ -368,7 +457,7 @@ export const WorkflowConfig = ({
         setSelectedRoleUsers([]);
 
         setTemporaryLevelData({
-            level: levels.length + 1,
+            level: levels?.length + 1,
             role_id: null,
             approval_users: [],
             multiple_approvers_enabled: false,
@@ -387,7 +476,7 @@ export const WorkflowConfig = ({
             return updatedLevels
         })
         setTemporaryLevelData((prev:any) => {
-            return { ...prev, level: levels.length }
+            return { ...prev, level: levels?.length }
         })
     }
 
@@ -433,187 +522,274 @@ export const WorkflowConfig = ({
         }
     }
 
+
     const handleSaveWorkflow = async () => {
 
-        const selectedStoresList = stores.filter(store => selectedStores.includes(store?.id)).map(store => {
-            return { id: store?.id, name: store?.name }
-        })
-        const moduleId = configData?.selectedModule.module_id;
-
-        const workflowLevelsPayload: any[] = [];
-        levels.forEach((levelItem) => {
-            configData?.assignedUsers.forEach((user) => {
-                configData.selectedActions.forEach((action:ActionProps) => {
-                    workflowLevelsPayload.push({
-                        level: levelItem.level,
-                        role_id: levelItem.role_id,
-                        override_enabled: override_enabled,
-                        created_by: UserId,
-                        modified_by: UserId,
-                        company_id: companyId,
-                        multiple_approvers_enabled: levelItem.multiple_approvers_enabled,
-                        approval_users: levelItem.approval_users,
-                        full_rejection_enabled: full_rejection_enabled,
-                        can_edit_document: action?.action_name?.[0] as string === 'Edit' || action?.action_name?.[0] === 'Add' ? can_edit_document : false,
-                        module_id: moduleId,
-                        action_id: action.action_id,
-                        assigned_to: user.id,
-                        scope_level: "User",
-                        status: levelItem.status,
-                        is_active: true,
-                        modified_at: new Date().toISOString(),
-                        stores: configData?.selectedModule.is_store_specific ? selectedStoresList : []
+        try {
+            
+            const selectedStoresList = stores.filter(store => selectedStores.includes(store?.id)).map(store => {
+                return { id: store?.id, name: store?.name }
+            })
+            const moduleId = configData?.selectedModule.module_id;
+            const grp:any = Object.values(selectedGroup)[0]
+            const assignedGroupUsers = configData?.assignedUsers.filter((user)=> grp?.assignedUsers.includes(user.id))
+            const assignedWorkflowUsers = selectedGroup && groupedWorkflows.length > 1 ? assignedGroupUsers : configData?.assignedUsers;
+            const workflowLevelsPayload: any[] = [];
+            levels?.forEach((levelItem) => {
+                assignedWorkflowUsers?.forEach((user) => {
+                    configData?.selectedActions.forEach((action:ActionProps) => {
+                        workflowLevelsPayload.push({
+                            level: levelItem.level,
+                            role_id: levelItem.role_id,
+                            override_enabled: override_enabled,
+                            created_by: UserId,
+                            modified_by: UserId,
+                            company_id: companyId,
+                            multiple_approvers_enabled: levelItem.multiple_approvers_enabled,
+                            approval_users: levelItem.approval_users,
+                            full_rejection_enabled: full_rejection_enabled,
+                            can_edit_document: action?.action_name?.[0] as string === 'Edit' || action?.action_name?.[0] === 'Add' ? can_edit_document : false,
+                            module_id: moduleId,
+                            action_id: action.action_id,
+                            assigned_to: user.id,
+                            scope_level: "User",
+                            status: levelItem.status,
+                            is_active: true,
+                            modified_at: new Date().toISOString(),
+                            stores: configData?.selectedModule.is_store_specific ? selectedStoresList : []
+                        })
                     })
                 })
             })
-        })
-
-        if (editMode) {
-            const InitialUpdatedLevels = levels.filter(level => initialLevels.some(initialLevel => initialLevel?.id === level?.id));
-            const InitialUpdatedLevelsData = initialLevels.filter(levelItem => InitialUpdatedLevels.some(initialLevel => initialLevel?.id === levelItem?.id))
-            const assignedUsers:any = configData?.assignedUsers.map(user =>user.id);
-            const actionIds:any = configData?.selectedActions.map(action => action.action_id);
-            let updatedLevels:any[] =[];
-            const { data, error } = await supabase
-                .from('workflow_config')
-                .select('*')
-                .in('assigned_to', assignedUsers)
-                .eq('module_id', moduleId!)
-                .in('action_id', actionIds)
-                .eq('company_id', companyId)
-                .eq('is_active', true);
-
-            if (error) throw error;
-
-            for (const initialLevel of InitialUpdatedLevelsData){
-                const matchingWorkflowLevels = data.filter((levelItem)=> levelItem.level === initialLevel.level);
-                const matchingInitialUpdatedLevel = InitialUpdatedLevels.find(level => level.id === initialLevel.id)
-
-                matchingWorkflowLevels.forEach((levelItem)=>{
-                    updatedLevels.push({
-                        ...levelItem,
-                        level: matchingInitialUpdatedLevel?.level,
-                        role_id: matchingInitialUpdatedLevel?.role_id,
-                        multiple_approvers_enabled: matchingInitialUpdatedLevel?.multiple_approvers_enabled,
-                        approval_users: matchingInitialUpdatedLevel?.approval_users,
-                        status: matchingInitialUpdatedLevel?.status,
-                    })
-                })
-            }
-
-           let deletedIds: any[]=[];
-            const deletedLevels = initialLevels.filter(initialLevel => !levels.some(level => level?.id === initialLevel.id));
-            for (const level of deletedLevels){
-                const matchingWorkflowLevels = data.filter((levelItem)=> levelItem.level === level.level);
-                deletedIds.push(...matchingWorkflowLevels.map(level => level.id))
-            }
-            const newLevels = levels.filter(level => !initialLevels.some(initialLevel => initialLevel?.id === level?.id));
-
-            if(deletedLevels.length > 0) {
-
-                const { error: deleteError } = await supabase
-                    .from('workflow_config')
-                    .update({ is_active: false })
-                    .in('id', deletedIds);
-
-                if(deleteError) {
-                    toast.error(deleteError?.message)
-                    throw deleteError;
-                }
-            }
-
-            if(updatedLevels.length > 0) {
-                for (const level of updatedLevels) {
-                    const isEditableAction = configData?.selectedActions.filter(action => action.action_id === level.action_id).some(action => action?.action_name?.[0] === 'Edit' || action?.action_name?.[0] === 'Add');
-                    const updatePayload = {
-                        level: level.level,
-                        role_id: level.role_id,
-                        multiple_approvers_enabled: level.multiple_approvers_enabled,
-                        approval_users: level.approval_users,
-                        status: level.status,
-                        modified_at: new Date().toISOString(),
-                        override_enabled: override_enabled,
-                        modified_by: UserId,
-                        full_rejection_enabled: full_rejection_enabled,
-                        can_edit_document: isEditableAction ? can_edit_document : false,
-                        stores: configData?.selectedModule.is_store_specific ? selectedStoresList : []
-                    };
-                    const { error: UpdateError } = await supabase
-                    .from('workflow_config')
-                    .update(updatePayload)
-                    .eq('id', level.id!);
-
-                    if(UpdateError) {
-                        toast.error(UpdateError?.message)
-                        throw UpdateError;
-                    }
-                }
-            }
-
-            if(newLevels.length > 0) {
-                const insertPayload = workflowLevelsPayload.filter(level => newLevels.some(newLevel => newLevel.level === level.level));
-
-                 const { error: insertError } = await supabase
-                    .from('workflow_config')
-                    .insert(insertPayload);
-
-                if (insertError) {
-                    toast.error(insertError?.message)
-                    throw insertError;
-                }
-
-            }
-        } else {
-            if (workflowLevelsPayload.length > 0) {
+    
+            if (editMode) {
+                const InitialUpdatedLevels = levels?.filter(level => initialLevels.some(initialLevel => initialLevel?.id === level?.id));
+                const InitialUpdatedLevelsData = initialLevels.filter(levelItem => InitialUpdatedLevels.some(initialLevel => initialLevel?.id === levelItem?.id))
+                const assignedUsers:any = assignedWorkflowUsers?.map(user =>user.id);
+                const actionIds:any = configData?.selectedActions.map(action => action.action_id);
+                let updatedLevels:any[] =[];
                 const { data, error } = await supabase
                     .from('workflow_config')
-                    .insert(workflowLevelsPayload)
-                    .select();
-
-                if (error) {
-                    toast.error(error?.message)
-                    throw error;
+                    .select('*')
+                    .in('assigned_to', assignedUsers)
+                    .eq('module_id', moduleId!)
+                    .in('action_id', actionIds)
+                    .eq('company_id', companyId)
+                    .eq('is_active', true);
+    
+                if (error) throw error;
+    
+                for (const initialLevel of InitialUpdatedLevelsData){
+                    const matchingWorkflowLevels = data.filter((levelItem)=> levelItem.level === initialLevel.level);
+                    const matchingInitialUpdatedLevel = InitialUpdatedLevels.find(level => level.id === initialLevel.id)
+    
+                    matchingWorkflowLevels.forEach((levelItem)=>{
+                        updatedLevels.push({
+                            ...levelItem,
+                            level: matchingInitialUpdatedLevel?.level,
+                            role_id: matchingInitialUpdatedLevel?.role_id,
+                            multiple_approvers_enabled: matchingInitialUpdatedLevel?.multiple_approvers_enabled,
+                            approval_users: matchingInitialUpdatedLevel?.approval_users,
+                            status: matchingInitialUpdatedLevel?.status,
+                        })
+                    })
                 }
-
-                if (data && configData?.assignedUsers && moduleId) {
-                    for (const user of configData?.assignedUsers) {
-                        const { data: modulePrm } = await supabase
-                            .from('module_permissions')
-                            .select('permissions')
-                            .eq('user_id', user.id)
-                            .eq('module_id', moduleId)
-                            .eq('company_id', companyId);
-
-
-                        if (modulePrm && Array.isArray(modulePrm[0].permissions)) {
-                            const selectedActionIds = configData.selectedActions.flatMap(action => action.action_id)
-                            const updatedPermissions = modulePrm[0].permissions.map((prm:any) => {
-                                if (selectedActionIds.includes(prm.action_id)) {
-                                    return { ...prm, requiredworkflow: true }
-                                } else {
-                                    return { ...prm }
-                                }
-                            });
-
-                            const { data: updatedPrm } = await supabase
-                                .from('module_permissions')
-                                .update({ permissions: updatedPermissions })
-                                .eq('user_id', user.id)
-                                .eq('module_id', moduleId)
-                                .eq('company_id', companyId)
-                                .select();
-
+    
+               let deletedIds: any[]=[];
+                const deletedLevels = initialLevels.filter(initialLevel => !levels.some(level => level?.id === initialLevel.id));
+                for (const level of deletedLevels){
+                    const matchingWorkflowLevels = data.filter((levelItem)=> levelItem.level === level.level);
+                    deletedIds.push(...matchingWorkflowLevels.map(level => level.id))
+                }
+                const newLevels = levels?.filter(level => !initialLevels.some(initialLevel => initialLevel?.id === level?.id));
+    
+                if(deletedLevels.length > 0) {
+    
+                    const { error: deleteError } = await supabase
+                        .from('workflow_config')
+                        .update({ is_active: false })
+                        .in('id', deletedIds);
+    
+                    if(deleteError) {
+                        toast.error(deleteError?.message)
+                        throw deleteError;
+                    }
+                }
+    
+                if(updatedLevels.length > 0) {
+                    for (const level of updatedLevels) {
+                        const isEditableAction = configData?.selectedActions.filter(action => action.action_id === level.action_id).some(action => action?.action_name?.[0] === 'Edit' || action?.action_name?.[0] === 'Add');
+                        const updatePayload = {
+                            level: level.level,
+                            role_id: level.role_id,
+                            multiple_approvers_enabled: level.multiple_approvers_enabled,
+                            approval_users: level.approval_users,
+                            status: level.status,
+                            modified_at: new Date().toISOString(),
+                            override_enabled: override_enabled,
+                            modified_by: UserId,
+                            full_rejection_enabled: full_rejection_enabled,
+                            can_edit_document: isEditableAction ? can_edit_document : false,
+                            stores: configData?.selectedModule.is_store_specific ? selectedStoresList : []
+                        };
+                        const { error: UpdateError } = await supabase
+                        .from('workflow_config')
+                        .update(updatePayload)
+                        .eq('id', level.id!);
+    
+                        if(UpdateError) {
+                            toast.error(UpdateError?.message)
+                            throw UpdateError;
                         }
                     }
                 }
-
+    
+                if(newLevels.length > 0) {
+                    const insertPayload = workflowLevelsPayload.filter(level => newLevels.some(newLevel => newLevel.level === level.level));
+    
+                     const { error: insertError } = await supabase
+                        .from('workflow_config')
+                        .insert(insertPayload);
+    
+                    if (insertError) {
+                        toast.error(insertError?.message)
+                        throw insertError;
+                    }
+    
+                }
+            } else {
+                if (workflowLevelsPayload.length > 0) {
+                    const { data, error } = await supabase
+                        .from('workflow_config')
+                        .insert(workflowLevelsPayload)
+                        .select();
+    
+                    if (error) {
+                        toast.error(error?.message)
+                        throw error;
+                    }
+    
+                    if (data && assignedWorkflowUsers && moduleId) {
+                        for (const user of assignedWorkflowUsers) {
+                            const { data: modulePrm } = await supabase
+                                .from('module_permissions')
+                                .select('permissions')
+                                .eq('user_id', user.id)
+                                .eq('module_id', moduleId)
+                                .eq('company_id', companyId);
+    
+    
+                            if (modulePrm && Array.isArray(modulePrm[0].permissions)) {
+                                const selectedActionIds = configData.selectedActions.flatMap(action => action.action_id)
+                                const updatedPermissions = modulePrm[0].permissions.map((prm:any) => {
+                                    if (selectedActionIds.includes(prm.action_id)) {
+                                        return { ...prm, requiredworkflow: true }
+                                    } else {
+                                        return { ...prm }
+                                    }
+                                });
+    
+                                const { data: updatedPrm } = await supabase
+                                    .from('module_permissions')
+                                    .update({ permissions: updatedPermissions })
+                                    .eq('user_id', user.id)
+                                    .eq('module_id', moduleId)
+                                    .eq('company_id', companyId)
+                                    .select();
+    
+                            }
+                        }
+                    }
+    
+                }
             }
+                toast.success(editMode?  "Workflow Configuration Updated Successfully" : "Workflow Configuration Created Successfully");
+                fetchWorkflowData();
+                    setGroupedWorkflows([]);
+        setSelectedGroup({});
+                setEditMode(true);
+                setCanReturn(true);
+                
+        } catch (error) {
+            console.log("Error saving workflow",error)
         }
-            toast.success(editMode?  "Workflow Configuration Updated Successfully" : "Workflow Configuration Created Successfully");
-            fetchWorkflowData();
-            setEditMode(true);
-            setCanReturn(true);
+    }
+
+    const handleSyncWorkflows =async()=>{
+        try {
             
+            const selectedStoresList = stores.filter(store => selectedStores.includes(store?.id)).map(store => {
+                return { id: store?.id, name: store?.name }
+            })
+            const moduleId = configData?.selectedModule.module_id;
+            const grp:any = Object.values(selectedGroup)[0]
+            const filteredGroupUsers = configData?.assignedUsers.filter((user)=> !grp?.assignedUsers.includes(user.id));
+    
+            const assignedUsers:any = filteredGroupUsers?.map(user =>user.id);
+            const actionIds:any = configData?.selectedActions.map(action => action.action_id);
+    
+                const { error } = await supabase
+                    .from('workflow_config')
+                    .update({is_active: false})
+                    .in('assigned_to', assignedUsers)
+                    .eq('module_id', moduleId!)
+                    .in('action_id', actionIds)
+                    .eq('company_id', companyId)
+                    .eq('is_active', true);
+    
+                if (error) throw error;
+    
+                        const workflowLevelsPayload: any[] = [];
+            levels?.forEach((levelItem) => {
+                filteredGroupUsers?.forEach((user) => {
+                    configData?.selectedActions.forEach((action:ActionProps) => {
+                        workflowLevelsPayload.push({
+                            level: levelItem.level,
+                            role_id: levelItem.role_id,
+                            override_enabled: override_enabled,
+                            created_by: UserId,
+                            modified_by: UserId,
+                            company_id: companyId,
+                            multiple_approvers_enabled: levelItem.multiple_approvers_enabled,
+                            approval_users: levelItem.approval_users,
+                            full_rejection_enabled: full_rejection_enabled,
+                            can_edit_document: action?.action_name?.[0] as string === 'Edit' || action?.action_name?.[0] === 'Add' ? can_edit_document : false,
+                            module_id: moduleId,
+                            action_id: action.action_id,
+                            assigned_to: user.id,
+                            scope_level: "User",
+                            status: levelItem.status,
+                            is_active: true,
+                            modified_at: new Date().toISOString(),
+                            stores: configData?.selectedModule.is_store_specific ? selectedStoresList : []
+                        })
+                    })
+                })
+            })
+    
+            if (workflowLevelsPayload.length > 0) {
+                    const { data, error } = await supabase
+                        .from('workflow_config')
+                        .insert(workflowLevelsPayload)
+                        .select();
+    
+                    if (error) {
+                        toast.error(error?.message)
+                        throw error;
+                    }
+                }
+    
+                 toast.success("Workflow Configuration Synced Successfully");
+                fetchWorkflowData();
+                    setGroupedWorkflows([]);
+        setSelectedGroup({});
+                setEditMode(true);
+                setCanReturn(true);
+
+        } catch (error) {
+            console.log("Error syncing workflows",error)
+        }
+        
     }
 
     function handleResetState(){
@@ -622,13 +798,15 @@ export const WorkflowConfig = ({
             setShowModuleAccess(true);
             fetchGroupedModuleAccess();
             setTemporaryLevelData({
-        level: levels.length + 1,
+        level: levels?.length + 1,
         role_id: null,
         approval_users: [],
         multiple_approvers_enabled: false,
         status: true
     });
     setSelectedStores([]);
+    setGroupedWorkflows([]);
+    setSelectedGroup({});
     setOverride_enabled(false);
     setFullRejectionEnabled(false);
     setCan_edit_document(false);
@@ -776,6 +954,42 @@ export const WorkflowConfig = ({
                                 <p className="text-gray-500">Please select atleast one store to configure workflows</p>
                             </div>
                             :
+                            <>
+                            {groupedWorkflows.length > 1 && (
+                                <div className="mt-6">
+                                    <div className="rounded-lg bg-gray-50 shadow border p-1 overflow-hidden mb-2 flex justify-start items-center">
+                                        {groupedWorkflows.map((grpObj,index)=> {
+                                            const grpKey = Object.keys(grpObj)[0];
+                                            const grp = Object.values(grpObj)[0] as any;
+                                            const isSelectedGrp = grpKey === Object.keys(selectedGroup as any)[0];
+                                            return(
+                                                <button key={grpKey}
+                                        onClick={() => {
+                                            setSelectedGroup(grpObj);
+                                        }}
+                                        className={`flex gap-2 items-center font-semibold py-2 px-4 text-sm rounded-lg ${isSelectedGrp ? 'bg-white border shadow-sm text-blue-700' : 'text-gray-600 hover:text-gray-800 transition-transform duration-200'}`}>
+                                        <label>Workflow {String.fromCharCode(65 + index)} 
+                                        </label>
+                                            <span className="bg-gray-200 rounded-lg px-1.5 mt-0.5 font-semibold text-gray-800 text-[12px]">{grp.assignedUsers?.length} users</span>
+                                    </button>
+                                            )
+                                        })}
+                                    </div>
+                                    <div className="flex justify-end items-center pr-2">
+                                        <span
+                                        onClick={()=>{
+                                            const grpKey = Object.keys(selectedGroup)[0];
+                                            const index = Number(grpKey?.slice(-1)) - 1;
+                                            const grp = Object.values(selectedGroup)[0] as any;
+                                          setShowWorkflowAssignedUsersModal(true);
+                                          setWorkflowAssignedUserData({workflowName: `Workflow ${String.fromCharCode(65 + index)}`, assignedUsers: grp.assignedUsers }) 
+                                        }}
+                                         className="text-xs flex items-center gap-1 text-blue-700 font-semibold hover:underline cursor-pointer transition-all duration-200">
+                                            <EyeIcon size={15}/><label>View assigned users</label>
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
                             <div className="rounded-lg border shadow p-4 space-y-3 my-8">
                                 <div className="rounded-md shadow border overflow-hidden">
                                     <Table>
@@ -790,8 +1004,8 @@ export const WorkflowConfig = ({
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {levels.length > 0 &&
-                                                levels.map((level: LevelDataProps |any, index: number) => {
+                                            {levels?.length > 0 &&
+                                                levels?.map((level: LevelDataProps |any, index: number) => {
                                                     let roleData = '';
                                                     if (level?.role_id) {
                                                         const role = roles.find(role => role.id === level?.role_id)
@@ -958,7 +1172,7 @@ export const WorkflowConfig = ({
                                 <div className="mt-4 mb-6 flex justify-start items-center">
                                     <Button
                                         onClick={() => {
-                                            if (levels.length === 0) {
+                                            if (levels?.length === 0) {
                                                 setLevels(prev => {
                                                     return [...prev, temporaryLevelData]
                                                 })
@@ -1011,28 +1225,46 @@ export const WorkflowConfig = ({
                                     </TooltipContent>
                                 </Tooltip>
                                 )}
-                                <div className="flex justify-end items-center my-1">
+                                <div className="flex justify-end items-center gap-4 my-1">
+                                    {selectedGroup && groupedWorkflows.length >1 && 
                                     <Tooltip>
                                         <TooltipTrigger asChild>
                                             <span>
                                                 <Button
-                                                    disabled={levels.length === 0 || levels.some(lvl => lvl.role_id === null)}
+                                                    disabled={levels?.length === 0 || levels?.some(lvl => lvl.role_id === null)}
+                                                    onClick={() => {
+                                                        handleSyncWorkflows();
+                                                    }}
+                                                    className="border border-blue-600 bg-white text-blue-600 hover:bg-blue-50 transition-colors duration-200 ">
+                                                    <span>Sync to All Users</span>
+                                                </Button>
+                                            </span>
+                                        </TooltipTrigger>
+                                            <TooltipContent>Standardize workflows by applying this exact configuration to every user in overarching group</TooltipContent>
+                                    </Tooltip>
+                                    }
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <span>
+                                                <Button
+                                                    disabled={levels?.length === 0 || levels?.some(lvl => lvl.role_id === null)}
                                                     onClick={() => handleSaveWorkflow()}
                                                     className="bg-gradient-to-r from-blue-500 to-blue-600 hover:bg-gradient-to-r hover:from-blue-600 hover:to-blue-700 transition-colors duration-200 ">
                                                     <span>Save Workflow</span>
                                                 </Button>
                                             </span>
                                         </TooltipTrigger>
-                                        {levels.length === 0 &&
+                                        {levels?.length === 0 &&
                                             <TooltipContent>Please select atleast one level.</TooltipContent>
                                         }
-                                        {levels.length > 0 && levels.some(lvl => lvl.role_id === null) &&
+                                        {levels?.length > 0 && levels?.some(lvl => lvl.role_id === null) &&
                                             <TooltipContent>All levels must have an approver role.</TooltipContent>
                                         }
                                     </Tooltip>
                                 </div>
 
                             </div>
+                            </>
                             }
                             <div className="flex justify-end items-center border-t pt-4">
                                 <Tooltip>
@@ -1247,6 +1479,37 @@ export const WorkflowConfig = ({
                                         <span className="text-xs text-gray-500">{user.email}</span>
                                     </div>
                                 </div>
+                            )}
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+                        <Dialog open={showWorkflowAssignedUsersModal} onOpenChange={()=>{
+                            setShowWorkflowAssignedUsersModal(false);
+                            setWorkflowAssignedUserData(null);
+                            }}>
+                <DialogContent className="max-w-xs rounded-xl bg-slate-50">
+                    <DialogHeader className="mb-5">
+                        <DialogTitle className="">
+                            {workflowAssignedUserData?.workflowName}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-3 max-h-[40vh] overflow-y-auto">
+                        {workflowAssignedUserData?.assignedUsers && workflowAssignedUserData?.assignedUsers.length > 0 &&
+                            workflowAssignedUserData?.assignedUsers.map((userId:any) => {
+                                const user:any = configData?.assignedUsers.find(user => user.id === userId)
+                                return(
+                                <div key={user.id} className="flex items-center gap-3 px-3 py-2.5 bg-gray-100 border border-gray-300 rounded-lg">
+                                    <span className="w-9 h-8 rounded-full p-4 bg-blue-100 flex items-center justify-center uppercase text-blue-600 font-medium">
+                                        {user.first_name?.[0]}{user.last_name?.[0]}
+                                    </span>
+                                    <div className="flex flex-col justify-start">
+                                        <span className="font-semibold capitalize text-[14px]">{user.first_name}{' '}{user.last_name}</span>
+                                        <span className="text-xs text-gray-500">{user.email}</span>
+                                    </div>
+                                </div>
+                                )
+                            }
                             )}
                     </div>
                 </DialogContent>

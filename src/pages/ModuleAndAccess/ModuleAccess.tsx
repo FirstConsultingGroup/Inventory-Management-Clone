@@ -431,7 +431,7 @@ export const ModuleAccess = () => {
             setExpandedGroup(new Set([0]));
             setExpandedParents(new Set());
             setExpandedModules(new Set());
-            setLoadPermission(false)
+            setLoadPermission(false);
             setTimeout(() => {
                 setLoading(false)
             }, 1000);
@@ -934,7 +934,10 @@ export const ModuleAccess = () => {
                                         <div className="space-y-3 w-full">
                                             <label className="text-xs ps-1">Roles <span className="text-red-600">*</span></label>
                                             <div>
-                                                <Popover open={isRolesOpen} onOpenChange={setRolesOpen}>
+                                                <Popover open={isRolesOpen} onOpenChange={(open)=>{
+                                                    setRolesOpen(open);
+                                                        setRoleName("");
+                                                    }}>
                                                     <PopoverTrigger className="rounded-md border w-full bg-white flex justify-start items-center py-1.5 px-2">
                                                         <span className={`text-sm p-0.5 ${roleId ? '' : 'text-gray-500'} `}>{roleId ? selectedRole : "Select Role"}</span>
                                                     </PopoverTrigger>
@@ -968,7 +971,10 @@ export const ModuleAccess = () => {
                                         <div className="space-y-3 w-full">
                                             <label className="text-xs ps-1">Users</label>
                                             <div>
-                                                <Popover open={isUsersOpen} onOpenChange={setUsersOpen}>
+                                                <Popover open={isUsersOpen} onOpenChange={(open)=>{
+                                                    setUsersOpen(open);
+                                                        setUserName("");
+                                                    }}>
                                                     <PopoverTrigger disabled={!roleId} className="rounded-md border w-full bg-white flex justify-start items-center py-1.5 px-2">
                                                         <span className={`text-sm p-0.5 ${!roleId ? 'text-gray-400 cursor-not-allowed' : userId ? '' : 'text-gray-600'} `}>{!roleId ? 'Please select a role' : userId ? selectedUser : "Select User"}</span>
                                                     </PopoverTrigger>
@@ -1335,7 +1341,7 @@ export const ModuleAccess = () => {
 
                                                                                                                                                             let workflow = [];
                                                                                                                                                             if (isPermitted && workflowData.length > 0) {
-                                                                                                                                                                workflow = workflowData.filter((w) => w.action_id === a.action_id)
+                                                                                                                                                                workflow = workflowData.filter((w) => w.action_id === a.action_id).sort((a,b)=> a.level - b.level)
                                                                                                                                                             }
 
                                                                                                                                                             return (

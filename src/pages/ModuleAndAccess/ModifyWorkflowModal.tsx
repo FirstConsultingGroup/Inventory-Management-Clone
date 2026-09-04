@@ -22,6 +22,29 @@ interface ModifyWorkflowModalProps {
     fetchGroupedModuleAccess: () => Promise<void>;
 }
 
+interface LevelDataProps {
+    level: number;
+    action_id: string | null;
+    approval_users: Json;
+    assigned_to: string | null;
+    company_id: string | null;
+    created_at: string;
+    created_by: string;
+    full_rejection_enabled: boolean | null;
+    can_edit_document: boolean | null;
+    id?: string;
+    is_active: boolean | null;
+    modified_at: string | null;
+    modified_by: string | null;
+    module_id: string | null;
+    multiple_approvers_enabled: boolean | null;
+    override_enabled: boolean | null;
+    role_id: string;
+    scope_level: string | null;
+    status: boolean | null;
+    stores: Json | null;
+}
+
 interface UserProps {
     email: string | null;
     first_name: string | null;
@@ -80,6 +103,7 @@ export const ModifyWorkflowModal = ({
     const [viewWorkflow, setViewWorkflow] = useState(true);
     const [stores, setStores] = useState<any[]>([]);
     const [roles, setRoles] = useState<any[]>([]);
+    const [groupedWorkflow, setGroupedWorkflow] = useState<any[]>([]);
 
     const [locationsAndStores, setLocationAndStores] = useState<LocationsAndStoresProps[]>([]);
     const [expandedLocations, setExpandedLocations] = useState<Set<number>>();
@@ -97,6 +121,7 @@ export const ModifyWorkflowModal = ({
     const [showConfigStoreWorkflowModal, setShowConfigStoreWorkflowModal] = useState(false);
     const [selectedWorkflowStoreData, setSelectedWorkflowStoreData] = useState<selectedWorkflowStoreDataType | null>(null);
     const [showWorkflowConfiguration, setShowWorkflowConfiguration] = useState(false);
+    const [hasDifferentWorkflow, setHasDifferentWorkflow] = useState(false);
 
     useEffect(() => {
         console.log('modifyWorkflowData', modifyWorkflowData)
@@ -181,24 +206,98 @@ export const ModifyWorkflowModal = ({
 
     }, [locationsAndStores, groupedUsers]);
 
-    let groupedWorkflow: any[] = [];
-    if (data?.workflow?.length > 0) {
+    function fetchGroupedWorkflow(){
+                if (!data || !data.workflow || data?.workflow?.length === 0 || !groupedUserIds) return;
 
-        const workflowData = data?.workflow.filter((w:any) => w.level === 1);
+            let groupedWorkflow:any =[];
+            for (const user of groupedUserIds){
+                const userWorkflows:LevelDataProps[] | any = data.workflow.filter((w:LevelDataProps)=>w.assigned_to === user);
+                if(groupedWorkflow.length === 0){
+                    groupedWorkflow.push({grp1 : {assignedUsers: [user],
+                         override_enabled:userWorkflows[0].override_enabled ,
+                         full_rejection_enabled:userWorkflows[0].full_rejection_enabled,
+                         can_edit_document:userWorkflows[0].can_edit_document,
+                         levels : userWorkflows}})
+                    }else {
+                         const matchingGrp = groupedWorkflow.find((grpObj :any)=>{
+                            const grp = Object.values(grpObj)[0] as any;
 
-        for (const workflow of workflowData) {
-            const storeIds: [] = workflow.stores.map((store:any) => store.id || store);
-            const existingGroup = groupedWorkflow.find(item => {
-                if (item.stores.length !== storeIds.length) return false;
-                return item.stores.every((store:any, index:number) => store === storeIds[index])
-            });
-            if (existingGroup) {
-                existingGroup.assigned_to.push(workflow.assigned_to)
-            } else {
-                groupedWorkflow.push({ stores: storeIds, assigned_to: [workflow.assigned_to] })
+                            const mainKeysMatch = grp.override_enabled === userWorkflows[0].override_enabled && 
+                            grp.full_rejection_enabled === userWorkflows[0].full_rejection_enabled &&
+                            grp.can_edit_document === userWorkflows[0].can_edit_document;
+
+                            if(!mainKeysMatch) return false;
+                            if(grp.levels.length !== userWorkflows.length) return false;
+
+                            const allLevelsMatch = grp.levels.every((grpLevel :LevelDataProps)=> {
+                                const workflowLevel:LevelDataProps = userWorkflows.find((workflow:LevelDataProps) => workflow.level === grpLevel.level);
+                                if(!workflowLevel) return false;
+                                const workflowApprovalUsers:any = workflowLevel.approval_users;
+                                const grpApprovalUsers:any = grpLevel.approval_users;
+                                if(
+                                   workflowLevel.multiple_approvers_enabled !== grpLevel.multiple_approvers_enabled ||
+                                   workflowLevel.status !== grpLevel.status ||
+                                   workflowLevel.role_id !== grpLevel.role_id ||
+                                   workflowApprovalUsers.length !== grpApprovalUsers.length ||
+                                   !workflowApprovalUsers.every((id:any) => 
+                                        grpApprovalUsers.includes(id))
+                                ) return false;
+
+                                return true;
+                            })
+
+                            if(!allLevelsMatch) return false;
+
+                            return true;
+                         });
+
+                         if(matchingGrp){
+                            const grpKey = Object.keys(matchingGrp)[0];
+                            matchingGrp[grpKey].assignedUsers.push(user);
+                         }else{
+                            groupedWorkflow.push({[`grp${groupedWorkflow.length + 1}`] : 
+                         {assignedUsers: [user],
+                         override_enabled:userWorkflows[0].override_enabled ,
+                         full_rejection_enabled:userWorkflows[0].full_rejection_enabled,
+                         can_edit_document:userWorkflows[0].can_edit_document,
+                         levels : userWorkflows}
+                            })
+                         }
+                    }
+                }
+                
+                if(groupedWorkflow.length > 1){
+                    setHasDifferentWorkflow(true);
+    }
+}
+
+    function SetGroupedWorkflow (){
+        if (data?.workflow || data?.workflow?.length > 0) {
+        let groupedWorkflow: any[] = [];
+
+                const workflowData = data?.workflow.filter((w:any) => w.level === 1);
+                
+                for (const workflow of workflowData) {
+                    const storeIds: any[] = workflow.stores.map((store:any) => store.id || store);
+                    const existingGroup = groupedWorkflow.find((item:any) => {
+                        if (item.stores.length !== storeIds.length) return false;
+                        return item.stores.every((store:any) => storeIds.includes(store))
+                    });
+                    if (existingGroup) {
+                        existingGroup.assigned_to.push(workflow.assigned_to)
+                    } else {
+                        groupedWorkflow.push({ stores: storeIds, assigned_to: [workflow.assigned_to] })
+                    }
+                }
+                setGroupedWorkflow(groupedWorkflow)
             }
         }
-    }
+
+        useEffect(() => { 
+            SetGroupedWorkflow(); 
+            fetchGroupedWorkflow(); 
+    }, [data])
+    
 
     useEffect(() => {
         const fetchRoles = async () => {
@@ -382,6 +481,7 @@ export const ModifyWorkflowModal = ({
             toast.success("Workflow Configuration for the store removed successfully")
             setSelectedWorkflowStoreData(null);
         fetchGroupedModuleAccess();
+        SetGroupedWorkflow();
     }
 
         const handleApplyConfiguration = async () => {
@@ -425,6 +525,7 @@ export const ModifyWorkflowModal = ({
             toast.success("Workflow Configuration for the store removed successfully")
             setSelectedWorkflowStoreData(null);
         fetchGroupedModuleAccess();
+        SetGroupedWorkflow();
         }
 
 
@@ -950,6 +1051,13 @@ export const ModifyWorkflowModal = ({
                             </span>
                         </DialogTitle>
                     </DialogHeader>
+                    {hasDifferentWorkflow ? 
+                    <div className="px-5 py-3">
+                        <p className="text-gray-500 text-sm mt-2">Users in this group currently have different workflow configuration. Would you like to instantly apply each user's respective existing configuration to{' '}
+                            <label className="text-gray-600 font-semibold">{selectedWorkflowStoreData?.name}?</label>
+                        </p>
+                    </div>
+                    :
                     <div className="p-5 space-y-6">
                         <p className="text-gray-500 text-sm mt-2">Would you like to instantly apply this existing configuration to{' '}
                             <label className="text-gray-600 font-semibold">{selectedWorkflowStoreData?.name}?</label>
@@ -1026,13 +1134,13 @@ export const ModifyWorkflowModal = ({
                                         <div className="flex flex-col gap-3 mt-5 mb-2 p-4 text-sm text-gray-600 border-t">
                                             <span className="flex items-center gap-2 w-fit">
                                             <Checkbox
-                                            checked={data?.workflow[0].override_enabled}
+                                            checked={data?.workflow[0]?.override_enabled}
                                                 className="border rounded-xs border-gray-500 data-[state=checked]:bg-blue-500 data-[state=checked]:text-white data-[state=checked]:border-blue-500" />
                                             <label>Allow SuperAdmin to override all approval levels</label>
                                         </span>
                                         <span className="flex items-center gap-2 w-fit">
                                             <Checkbox
-                                            checked={data?.workflow[0].full_rejection_enabled}
+                                            checked={data?.workflow[0]?.full_rejection_enabled}
                                                 className="border rounded-xs border-gray-500 data-[state=checked]:bg-blue-500 data-[state=checked]:text-white data-[state=checked]:border-blue-500" />
                                             <label>Enable Complete rejection</label>
                                         </span>
@@ -1042,6 +1150,7 @@ export const ModifyWorkflowModal = ({
                             }
                         </div>
                     </div>
+                    }
                     <DialogFooter className="mt-2 border-t px-5 py-4">
                         <div className="flex justify-end gap-2">
                             <Button className="py-4 px-5 rounded-lg" variant="outline" onClick={() => {
