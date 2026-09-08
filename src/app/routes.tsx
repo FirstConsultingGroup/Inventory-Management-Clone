@@ -66,6 +66,8 @@ import { elements } from 'chart.js';
 import ApprovalProcess from '@/pages/ApprovalProcess/ApprovalProcess';
 import ApprovalHistory from '@/pages/ApprovalProcess/ApprovalHistory';
 import { ModuleAccess } from '@/pages/ModuleAndAccess/ModuleAccess';
+import { Quotations } from '@/pages/Quotations/list/Quotations';
+import QuotationForm from '@/pages/Quotations/config/QuotationForm';
 
 // Define routes with their corresponding ModuleKey for permission checks
 const protectedRoutes = [
@@ -312,6 +314,29 @@ const protectedRoutes = [
     path: 'inventory/edit/:id',
     element: <InventoryItemForm />,
     module: 'Inventory Management' as ModuleKey,
+  },
+    {
+    path: 'Quotations',
+    element: <Quotations />,
+    module: 'Quotations' as ModuleKey,
+  },
+  {
+    path: 'Quotation/create',
+    element: <QuotationForm />,
+    module: 'Quotations' as ModuleKey,
+    action: 'Add',
+  },
+  {
+    path: 'QuotationForm/edit/:id',
+    element: <QuotationForm />,
+    module: 'Quotations' as ModuleKey,
+    action: 'Edit',
+  },
+  {
+    path: 'Quotation/view/:id',
+    element: <QuotationForm />,
+    module: 'Quotations' as ModuleKey,
+    action: 'View',
   },
   {
     path: 'purchase-order-return-approvals',

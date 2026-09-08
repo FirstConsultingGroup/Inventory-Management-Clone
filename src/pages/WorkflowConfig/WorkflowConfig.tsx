@@ -247,14 +247,14 @@ export const WorkflowConfig = ({
         
         const module_id = configData.selectedModule.module_id;
         const assignedUsers:any = configData?.assignedUsers.map(user =>user.id);
-        const actionIds:any = configData?.selectedActions.map(action => action.action_id);
+const actionId = configData?.selectedActions?.[0]?.action_id;
 
             const { data:workflowData, error:workflowError } = await supabase
                 .from('workflow_config')
                 .select('*')
                 .in('assigned_to', assignedUsers)
                 .eq('module_id', module_id)
-                .in('action_id', actionIds)
+                .eq('action_id', actionId)
                 .eq('company_id', companyId)
                 .eq('is_active', true);
 

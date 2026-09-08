@@ -143,13 +143,15 @@ interface ApprovalRequestPayload {
   action_name: string;
   company_id: string;
   requested_by: string;
-  action_payload: any;
+  side_effects_payload: any;
   store_id?: string | null;
   entity_id?: string | null;
+  table_name: string;
+  resubmit_request_id:string | null;
 }
 
 const initiateApprovalRequest = async (params: ApprovalRequestPayload) => {
-  const { module_name, action_name, company_id, requested_by, action_payload, store_id, entity_id } = params;
+  const { module_name, action_name, company_id, requested_by, side_effects_payload, store_id, entity_id, table_name,resubmit_request_id } = params;
   
   // 1. Get Module ID
   const { data: moduleData, error: moduleError } = await supabase
@@ -179,8 +181,9 @@ const initiateApprovalRequest = async (params: ApprovalRequestPayload) => {
       store_id: store_id || null,
       company_id,
       requested_by,
-      action_payload,
-      entity_id: entity_id || null
+      side_effects_payload,
+      entity_id: entity_id || null,
+      table_name
     }
   });
   

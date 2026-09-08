@@ -394,7 +394,7 @@ export const DashboardLayout: React.FC = () => {
       const dynamicSections = groupedModulesData.map((parentModule: any) => ({
         title: parentModule.name || parentModule.moduleName || 'Other',
         items: (parentModule.modules || [])
-          .filter((mod: any) => !['Workflow Configuration', 'Purchase Order Management', 'Purchase Order Approvals', 'Quotations'].includes(mod.moduleKey) && !['Workflow Management', 'Purchase Orders', 'Quotations', 'Purchase Order Approvals'].includes(mod.moduleName))
+          .filter((mod: any) => !['Workflow Configuration', 'Purchase Order Management', 'Purchase Order Approvals'].includes(mod.moduleKey) && !['Workflow Management', 'Purchase Orders','Purchase Order Approvals'].includes(mod.moduleName))
           .map((mod: any) => ({
           path: mod.moduleRoute,
           label: mod.moduleName,
