@@ -105,7 +105,7 @@ export const ModuleAccess = () => {
     const [actions, setActions] = useState<{ id: string; action_name: string | null; }[]>([]);
     const [parentId, setParentId] = useState('all');
     const [moduleId, setModuleId] = useState('all');
-    const [roleId, setRoleId] = useState(null);
+    const [roleId, setRoleId] = useState<string | null>(null);
     const [userId, setUserId] = useState<string>('all');
     const [roleName, setRoleName] = useState("");
     const [userName, setUserName] = useState("");
@@ -234,9 +234,11 @@ export const ModuleAccess = () => {
                     .from('user_mgmt')
                     .select('*')
                     .eq('is_active', true)
+                    .neq('first_name', 'Super')
+                    .neq('last_name', 'Admin')
                     .eq('company_id', companyId);
 
-                if (roleId) {
+                if (roleId !== "all") {
                     query = query.eq('role_id', roleId)
                 }
                 if (userName.trim()) {
@@ -398,10 +400,13 @@ export const ModuleAccess = () => {
     const fetchGroupedModuleAccess = async () => {
         try {
             setLoading(true);
+            const roleIds:any = roles.map(role => role.id)
+            console.log('roleIds',roleIds);
+            console.log('userId',userId)
 
             const { data, error } = await supabase.rpc("get_grouped_module_access", {
                 p_company_id: companyId,
-                p_role_ids: roleId ? [roleId] : [],
+                p_role_ids: roleId ? roleId ==="all" ? roleIds : [roleId] : [],
                 p_user_id: userId !== "all" ? userId : undefined,
             })
 
@@ -949,6 +954,10 @@ export const ModuleAccess = () => {
                                                                 }} />
                                                             </div>
                                                             <div className="flex flex-col p-2 ">
+                                                                <span onClick={() => {
+                                                                    setRolesOpen(false);
+                                                                    setRoleId('all');
+                                                                }} className={`w-full flex justify-start items-center px-3 py-2 rounded-lg ${roleId == 'all' ? 'text-blue-500 bg-blue-50 font-semibold' : 'text-gray-700 font-semibold text-[14px]'} hover:bg-gray-50`}>Select All Roles</span>
                                                                 {roles.length > 0 ? roles.slice(0, 5).map((role) => {
 
                                                                     return (
@@ -989,7 +998,7 @@ export const ModuleAccess = () => {
                                                                 <span onClick={() => {
                                                                     setUsersOpen(false);
                                                                     setUserId('all');
-                                                                }} className={`w-full flex justify-start items-center px-3 py-2 rounded-lg ${userId == 'all' ? 'text-blue-500 bg-blue-50 font-semibold' : 'text-gray-700'} hover:bg-gray-50`}>All Users</span>
+                                                                }} className={`w-full flex justify-start items-center px-3 py-2 rounded-lg ${userId == 'all' ? 'text-blue-500 bg-blue-50 font-semibold' : 'text-gray-700 font-semibold text-[14px]'} hover:bg-gray-50`}>Select All Users</span>
                                                                 {users.length > 0 ? users.slice(0, 5).map((user) => {
 
                                                                     return (
