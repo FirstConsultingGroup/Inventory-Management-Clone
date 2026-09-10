@@ -191,8 +191,6 @@ export const Quotations: React.FC = () => {
     fetchUserRole();
   }, [userData]);
 
-  console.log('Current User Role:', userRole);
-
     useEffect(() => {
       if (!quotationId || !companyId) return;
   
@@ -443,7 +441,7 @@ export const Quotations: React.FC = () => {
           ...quotationItems.map(item => ({
             table: 'quotation_details',
             type: 'update',
-            match: { id: item.id },
+            match: {quotation_id: quotationId , item_id: item.id },
             data: { cost_price: item.cost_price }
           })),
            {
@@ -479,7 +477,7 @@ export const Quotations: React.FC = () => {
                 .from('quotation_details')
               .update({ cost_price: item.cost_price })
               .eq('quotation_id', quotationId)
-              .eq('item_d',item.id!);
+              .eq('item_id',item.id!);
             }
             
             const { error: systemLogError } = await supabase
@@ -498,8 +496,8 @@ export const Quotations: React.FC = () => {
         toast.error(error.message || "Failed to save or update quotation");
       }finally{
         setIsReceiveDialogOpen(false)
-                    setQuotationId(null)
-                    setQuotationItems([])
+        setQuotationId(null)
+        setQuotationItems([])
       }
   };
 
