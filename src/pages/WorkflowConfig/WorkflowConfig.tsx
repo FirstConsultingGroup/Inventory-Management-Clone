@@ -355,7 +355,12 @@ const actionId = configData?.selectedActions?.[0]?.action_id;
     
 
     useEffect(() => {
-                if(!initialLevels) return;
+        if(!editMode){
+            console.log('stores',stores)
+            setSelectedStores(stores.map(s => s.id))
+            return;
+        }
+        if(!initialLevels) return;
 
         setOverride_enabled(initialLevels[0]?.override_enabled ?? false);
         setFullRejectionEnabled(initialLevels[0]?.full_rejection_enabled ?? false);
@@ -369,8 +374,6 @@ const actionId = configData?.selectedActions?.[0]?.action_id;
             if(initialWorkflowStores.length > 0){
                 setSelectedStores(initialWorkflowStores)
             }
-        }else{
-            setSelectedStores(stores.map(s => s.id))
         }
         
     }, [stores,configData?.userStores,initialLevels,editMode])
