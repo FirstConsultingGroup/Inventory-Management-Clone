@@ -434,7 +434,7 @@ export const ModifyWorkflowModal = ({
 
             if (updateError) throw updateError;
             toast.success("Locations and Stores access updated successfully.")
-
+            fetchGroupedModuleAccess();
         } catch (error) {
             console.log("Failed to save configuration", error)
         }
@@ -469,10 +469,15 @@ export const ModifyWorkflowModal = ({
             if (UpdateWorkflowStore) {
                 setData((prevData: any) => {
             const updatedWorkflow = prevData.workflow.map((workflow: any) => {
-                if (workflow.stores.some((store: any) => store.id === selectedWorkflowStoreData.id)) {
-                    return { ...workflow, stores: workflow.stores.filter((store: any) => store.id !== selectedWorkflowStoreData.id) };
-                }
-                return workflow;
+                 const isAssignedUser = assignedWorkflowUsers?.includes(workflow.assigned_to);
+
+        const hasStore = workflow.stores?.some((store: any) =>store.id === selectedWorkflowStoreData.id);
+
+        if (isAssignedUser && hasStore) {
+            return {...workflow, stores: workflow.stores.filter((store: any) => store.id !== selectedWorkflowStoreData.id)};
+        }
+
+        return workflow;
             });
             return { ...prevData, workflow: updatedWorkflow };
         })
@@ -513,10 +518,17 @@ export const ModifyWorkflowModal = ({
             if (UpdateWorkflowStore) {
                 setData((prevData: any) => {
             const updatedWorkflow = prevData.workflow.map((workflow: any) => {
-                if (workflow.stores.some((store: any) => store.id === selectedWorkflowStoreData.id)) {
-                    return workflow;
-                }
-                return { ...workflow, stores: [...workflow.stores, newStore] };
+            const isAssignedUser = assignedWorkflowUsers?.includes(workflow.assigned_to);
+            if (!isAssignedUser){
+                return workflow;
+            }
+            const hasStore = workflow.stores?.some((store: any) => store.id === newStore.id);
+
+            if (hasStore){ 
+                return workflow;
+            }
+
+            return {...workflow,stores: [...(workflow.stores || []), newStore]};
             });
             return { ...prevData, workflow: updatedWorkflow };
         })

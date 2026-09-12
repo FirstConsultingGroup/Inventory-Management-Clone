@@ -401,8 +401,6 @@ export const ModuleAccess = () => {
         try {
             setLoading(true);
             const roleIds:any = roles.map(role => role.id)
-            console.log('roleIds',roleIds);
-            console.log('userId',userId)
 
             const { data, error } = await supabase.rpc("get_grouped_module_access", {
                 p_company_id: companyId,
@@ -510,13 +508,13 @@ export const ModuleAccess = () => {
 
     function handleToggleAllAction(signature: string, moduleId: string, actionId?: string[] | null, subModuleId?: string[] | null) {
         if (!actionId || !moduleId) return;
-        let permissionData = groupedSections.filter(grp => grp.signature === signature).flatMap(sec => sec.permissions_data);
+        let permissionData = groupedSections.filter(grp => grp.signature === signature).flatMap(sec => sec.permissions_data ?? []);
         let newPermissionData: any[] = [];
 
-        if (permissionData[0] !== null) {
+        if (permissionData.length > 0) {
             let module = permissionData.find(prm => prm.module_id === moduleId)
             if (module) {
-                if (module.permissions.length === actionId.length && ((module.submodule_permissions?.length === subModuleId?.length) || (typeof (module.submodule_permissions) != typeof (subModuleId)))) {
+                if (module.permissions.length === actionId.length && (subModuleId === null || ((module.submodule_permissions?.length === subModuleId?.length) || typeof (module.submodule_permissions) !== typeof subModuleId))) {
                     permissionData = permissionData.filter(prm => prm.module_id !== moduleId)
                 } else {
                     for (const id of actionId) {
@@ -568,7 +566,6 @@ export const ModuleAccess = () => {
         const newSectionData = groupedSections.map((section) => section.signature === signature ? { ...section, permissions_data: newPermissionData } : section)
         setGroupedSections(newSectionData)
     }
-
 
     function toggleExpandedSection(index: number) {
         setExpandedGroup(prev => {
@@ -1310,7 +1307,14 @@ export const ModuleAccess = () => {
                                                                                                                                                                 handleToggleAllAction(grp.signature, m.id, m.available_actions?.map((a:any) => a?.action_id), null)
                                                                                                                                                                 const unChecked = m.available_actions?.length !== permittedActions.length;
                                                                                                                                                                 if (unChecked) {
-                                                                                                                                                                    const isRequireWorkflowActions = m.available_actions?.filter((a:any) => a?.requires_approval === true)
+                                                                                                                                                                    let isRequireWorkflowActions =[];
+                                                                                                                                                                    const Actions = m.available_actions?.filter((a:any) => a?.requires_approval === true);
+                                                                                                                                                                    if(availableActions.length > 0){
+                                                                                                                                                                        const ActionIds = Actions.map((a:any) => a.action_id);
+                                                                                                                                                                        isRequireWorkflowActions = availableActions.filter((action) => ActionIds.includes(action.action_id));
+                                                                                                                                                                    }else{
+                                                                                                                                                                        isRequireWorkflowActions= Actions
+                                                                                                                                                                    }
                                                                                                                                                                     if (isRequireWorkflowActions && isRequireWorkflowActions.length > 0) {
                                                                                                                                                                         setMultipleActionModal(true);
                                                                                                                                                                         const actionData = isRequireWorkflowActions.map((action:any) => {
@@ -1352,6 +1356,7 @@ export const ModuleAccess = () => {
                                                                                                                                                             if (isPermitted && workflowData.length > 0) {
                                                                                                                                                                 workflow = workflowData.filter((w) => w.action_id === a.action_id).sort((a,b)=> a.level - b.level)
                                                                                                                                                             }
+                                                                                                                                                            const actionWorkflow = workflowData.filter((w) => w.action_id === a.action_id);
 
                                                                                                                                                             return (
                                                                                                                                                                 <Tooltip>
@@ -1363,15 +1368,18 @@ export const ModuleAccess = () => {
                                                                                                                                                                                 checked={(isPermitted && isModuleAccessEnabled) ?? false}
                                                                                                                                                                                 onCheckedChange={() => {
                                                                                                                                                                                     handleToggleAction(grp.signature, m.id, a.action_id, null)
+                                                                                                                                                                                    console.log(workflow)
+                                                                                                                                                                                    console.log('workflowData',workflowData)
                                                                                                                                                                                     const unChecked = !(isPermitted && isModuleAccessEnabled);
                                                                                                                                                                                     if (unChecked) {
                                                                                                                                                                                         if (a.requires_approval) {
                                                                                                                                                                                             setSingleActionModal(true);
                                                                                                                                                                                             const actionData = { ...a, action_name: action_name }
                                                                                                                                                                                             setSelectedAction(actionData);
+                                                                                                                                                                                            console.log('workflow',workflow)
                                                                                                                                                                                             const configData = {
                                                                                                                                                                                                 selectedModule: { module_id: m.id, module_name: m.module_name, is_store_specific: m.is_store_specific },
-                                                                                                                                                                                                selectedActions: [actionData], assignedUsers: grp.users, userStores: grp.users[0].stores,isEditMode :false
+                                                                                                                                                                                                selectedActions: [actionData], assignedUsers: grp.users, userStores: grp.users[0].stores,isEditMode : actionWorkflow.length > 0 ? true : false
                                                                                                                                                                                             }
                                                                                                                                                                                             setConfigWorkflowData(configData as ConfigWorkflowDataProps)
                                                                                                                                                                                         }
@@ -1533,21 +1541,31 @@ export const ModuleAccess = () => {
                                 {selectedMultipleActions.length > 0 &&
                                     selectedMultipleActions.map((action) => (
                                         <div className="flex-1">
-                                            <span key={action.action_id} className="flex justify-start items-center gap-3 min-w-[100px] bg-white border px-2 py-3 rounded-md">
+                                        <span key={action.action_id} className="flex justify-start items-center gap-3 min-w-[100px] bg-white border px-2 py-3 rounded-md">
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <span>
                                                 <Checkbox
-                                                    checked={configWorkflowData?.selectedActions.some(a => a.action_id === action.action_id)}
+                                                    checked={configWorkflowData?.selectedActions.some(a => a.action_id === action.action_id) || action.requiredworkflow}
+                                                    disabled={action.requiredworkflow}
                                                     onCheckedChange={() => {
-                                                        setConfigWorkflowData((prev : any) => {
+                                                        setConfigWorkflowData((prev: any) => {
                                                             let currentActions = prev?.selectedActions || [];
-                                                            const exists = currentActions?.some((a:ActionProps) => a.action_id === action.action_id)
+                                                            const exists = currentActions?.some((a: ActionProps) => a.action_id === action.action_id)
                                                             const updatedActions = exists ?
-                                                                currentActions.filter((a:ActionProps) => a.action_id !== action.action_id) :
+                                                                currentActions.filter((a: ActionProps) => a.action_id !== action.action_id) :
                                                                 [...currentActions, action]
 
                                                             return { ...prev, selectedActions: updatedActions }
                                                         })
                                                     }}
                                                     className="w-5 h-5 border-2 border-blue-400 data-[state=checked]:bg-blue-400 data-[state=checked]:text-white data-[state=checked]:border-blue-400" />
+                                                    </span>
+                                                </TooltipTrigger>
+                                                {action.requiredworkflow &&
+                                                    <TooltipContent>Workflow already configured for this action.</TooltipContent>
+                                                }
+                                            </Tooltip>
                                                 <label className="text-sm text-gray-600 font-semibold">{action.action_name}</label>
                                             </span>
                                         </div>

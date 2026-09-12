@@ -550,7 +550,7 @@ export const Quotations: React.FC = () => {
           quotationNumber: quotation.quotation_number ?? '',
           quotationDate: quotation.quotation_date ?? new Date().toISOString(),
           supplier: quotation.supplier_id.supplier_name ?? '',
-          status: quotation.status.value ?? '',
+          status: quotation.status?.value ? `${quotation.status.value}` : "Pending Approval",
           items: mappedItems,
           grandTotal: mappedItems.reduce((sum, item) => sum + (item.amount || 0), 0),
         });

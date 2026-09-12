@@ -356,7 +356,6 @@ const actionId = configData?.selectedActions?.[0]?.action_id;
 
     useEffect(() => {
         if(!editMode){
-            console.log('stores',stores)
             setSelectedStores(stores.map(s => s.id))
             return;
         }
@@ -525,6 +524,46 @@ const actionId = configData?.selectedActions?.[0]?.action_id;
         }
     }
 
+    const handleSetRequiredWorkflow =async()=>{
+        if(!editMode) return;
+      const moduleId = configData?.selectedModule.module_id;
+       const grp:any = Object.values(selectedGroup)[0]
+            const assignedGroupUsers = configData?.assignedUsers.filter((user)=> grp?.assignedUsers.includes(user.id))
+            const assignedWorkflowUsers = selectedGroup && groupedWorkflows.length > 1 ? assignedGroupUsers : configData?.assignedUsers;
+                            if (assignedWorkflowUsers && moduleId) {
+                        for (const user of assignedWorkflowUsers) {
+                            const { data: modulePrm } = await supabase
+                                .from('module_permissions')
+                                .select('permissions')
+                                .eq('user_id', user.id)
+                                .eq('module_id', moduleId)
+                                .eq('company_id', companyId);
+    
+    
+                            if (modulePrm && Array.isArray(modulePrm[0].permissions)) {
+                                const selectedActionIds = configData.selectedActions.flatMap(action => action.action_id)
+                                const updatedPermissions = modulePrm[0].permissions.map((prm:any) => {
+                                    if (selectedActionIds.includes(prm.action_id)) {
+                                        return { ...prm, requiredworkflow: true }
+                                    } else {
+                                        return { ...prm }
+                                    }
+                                });
+                                console.log('updatedPermissions',updatedPermissions)
+    
+                                const { data: updatedPrm } = await supabase
+                                    .from('module_permissions')
+                                    .update({ permissions: updatedPermissions })
+                                    .eq('user_id', user.id)
+                                    .eq('module_id', moduleId)
+                                    .eq('company_id', companyId)
+                                    .select();
+    
+                            }
+                        }
+                    }
+    }
+
 
     const handleSaveWorkflow = async () => {
 
@@ -660,6 +699,7 @@ const actionId = configData?.selectedActions?.[0]?.action_id;
                     }
     
                 }
+                handleSetRequiredWorkflow()
             } else {
                 if (workflowLevelsPayload.length > 0) {
                     const { data, error } = await supabase
@@ -1537,7 +1577,10 @@ const actionId = configData?.selectedActions?.[0]?.action_id;
                                 Cancel
                             </Button>
                             <Button
-                                onClick={() => handleResetState()}
+                                onClick={async() => {
+                                   await handleSetRequiredWorkflow()
+                                    handleResetState()
+                                }}
                                 className="py-4 px-6 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors duration-200 text-white">
                                 Confirm Return
                             </Button>

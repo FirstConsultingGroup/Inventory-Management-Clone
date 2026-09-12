@@ -831,7 +831,6 @@ return (
                                           className="text-center mx-auto w-[200px]"
                                           readOnly={isViewMode}
                                           type="number"
-                                          max={item.req_qty ?? 0}
                                           min={1}
                                           onChange={(e) => {
                                             const newQty = Number(e.target.value)
@@ -920,7 +919,6 @@ return (
     <Dialog open={showReqItemsModal} onOpenChange={(open) => {
       setShowReqItemsModal(open);
       if (!open) {
-        setPurchaseReqId(null);
         setSelectedPRItems([]);
       }
     }}>
@@ -1001,7 +999,6 @@ return (
             <Button
               onClick={() => {
                 setShowReqItemsModal(false);
-                setPurchaseReqId(null);
                 setSelectedPRItems([]);
               }}
               className="py-4 px-5 " variant="outline">
@@ -1013,7 +1010,6 @@ return (
                 setShowReqItemsModal(false);
                 const updatedItems:PRItemProps[] = [...quotationItems,...selectedPRItems]
                 setValue('quotation_items', updatedItems)
-                setPurchaseReqId(null);
                 setSelectedPRItems([]);
               }}
               className="py-4 px-6 bg-blue-600 hover:bg-blue-700 transition-colors duration-200 text-white">
