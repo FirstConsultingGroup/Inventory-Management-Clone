@@ -393,9 +393,8 @@ export const ModuleAccess = () => {
         return {granted: grantedPermissions,denied: deniedPermissions, accessPercent: accessPercent};
     })
     setGroupedAccessLevel(updatedAccesslevel)
-    }, [groupedSections]);
+    }, [groupedSections,filteredTree]);
 
-    
 
     const fetchGroupedModuleAccess = async () => {
         try {
