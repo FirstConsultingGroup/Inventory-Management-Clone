@@ -130,15 +130,13 @@ export const ModifyWorkflowModal = ({
 
     const groupedUserIds = groupedUsers?.flatMap(u => u.id);
 
-    useEffect(() => {
-
         const fetchLocationsAndStores = async () => {
             if(!groupedUserIds) return;
             try {
 
                 const { data: userLocation, error: userLocationError } = await supabase
                     .from('user_mgmt')
-                    .select('locations')
+                    .select('locations,stores')
                     .in('id', groupedUserIds);
 
                 if (userLocationError) throw userLocationError;
@@ -149,6 +147,10 @@ export const ModifyWorkflowModal = ({
                         return commonItems.filter((item: any) => currentSet.has(item))
                     })
                     setUserLocations(matchingLocations as string[])
+
+                    const permittedStoreIds:any = userLocation[0]?.stores;
+                    setInitialPermittedStores(permittedStoreIds);
+                    setPermittedStores(permittedStoreIds);
                 }
 
                 const { data: locations, error: locationsError } = await supabase
@@ -184,17 +186,16 @@ export const ModifyWorkflowModal = ({
             }
         }
 
+        useEffect(() => {
+
         fetchLocationsAndStores();
-    }, [modifyWorkflowData])
+    }, [modifyWorkflowData,viewWorkflow])
 
     useEffect(() => {
-        const PermittedStores =  groupedUsers?.[0]?.stores;
-        setInitialPermittedStores(PermittedStores);
-        setPermittedStores(PermittedStores);
 
         let PermittedLocations = [];
         for (const loc of locationsAndStores) {
-            const hasPermittedStores = loc.stores.filter(store => PermittedStores?.includes(store.id))
+            const hasPermittedStores = loc.stores.filter(store => permittedStores?.includes(store.id))
             if (hasPermittedStores.length > 0) {
                 PermittedLocations.push(loc.id)
             } else if (userLocations.includes(loc.id)) {
@@ -204,7 +205,7 @@ export const ModifyWorkflowModal = ({
 
         setPermittedLocations(PermittedLocations)
 
-    }, [locationsAndStores, groupedUsers]);
+    }, [locationsAndStores, groupedUsers,viewWorkflow]);
 
     function fetchGroupedWorkflow(){
                 if (!data || !data.workflow || data?.workflow?.length === 0 || !groupedUserIds) return;
@@ -278,15 +279,17 @@ export const ModifyWorkflowModal = ({
                 const workflowData = data?.workflow.filter((w:any) => w.level === 1);
                 
                 for (const workflow of workflowData) {
-                    const storeIds: any[] = workflow.stores.map((store:any) => store.id || store);
+                    const workflowStores: any[] = workflow.stores;
                     const existingGroup = groupedWorkflow.find((item:any) => {
-                        if (item.stores.length !== storeIds.length) return false;
-                        return item.stores.every((store:any) => storeIds.includes(store))
+                    const existingStoreIds = item.stores.map((store: any) => store.id);
+                    const currentStoreIds = workflowStores.map((store: any) => store.id);
+                        if (existingStoreIds.length !== currentStoreIds.length) return false;
+                        return existingStoreIds.every((storeId:any) => currentStoreIds.includes(storeId))
                     });
                     if (existingGroup) {
                         existingGroup.assigned_to.push(workflow.assigned_to)
                     } else {
-                        groupedWorkflow.push({ stores: storeIds, assigned_to: [workflow.assigned_to] })
+                        groupedWorkflow.push({ stores: workflowStores, assigned_to: [workflow.assigned_to] })
                     }
                 }
                 setGroupedWorkflow(groupedWorkflow)
@@ -435,6 +438,7 @@ export const ModifyWorkflowModal = ({
             if (updateError) throw updateError;
             toast.success("Locations and Stores access updated successfully.")
             fetchGroupedModuleAccess();
+           await fetchLocationsAndStores();
         } catch (error) {
             console.log("Failed to save configuration", error)
         }
@@ -545,7 +549,7 @@ export const ModifyWorkflowModal = ({
         let assignedUsers: any = data.selectedModule?.is_store_specific && groupedWorkflow.length > 1 ? selectedWorkflowGroup?.assignedUsers : groupedUsers;
         const configData = {
             selectedModule: data.selectedModule,
-            selectedActions: [data.selectedActions?.[0]], assignedUsers: assignedUsers, userStores: assignedUsers[0].stores, isEditMode: true
+            selectedActions: [data.selectedActions?.[0]], assignedUsers: assignedUsers, userStores: permittedStores, isEditMode: true
         }
         onClose(open)
         setConfigWorkflowData(configData as ConfigWorkflowDataProps);
@@ -724,7 +728,7 @@ export const ModifyWorkflowModal = ({
                                                                                 {stores.map((store:any) => {
                                                                                     const alreadyConfiguredStores = workflow.stores;
 
-                                                                                    const configuredStore = alreadyConfiguredStores.filter((s:any) => s === store.id);
+                                                                                    const configuredStore = alreadyConfiguredStores.filter((s:any) => s.id === store.id);
                                                                                     const isConfiguredStore = configuredStore.length > 0;
                                                                                     const hasStoreAccess = permittedStores?.includes(store.id);
 
