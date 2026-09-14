@@ -112,6 +112,7 @@ export const WorkflowConfig = ({
     const [showAvailableActionsModal, setShowAvailableActionsModal] = useState(false);
     const [showConfirmReturnModal, setShowConfirmReturnModal] = useState(false);
     const [showConfirmStoreAccessModal, setShowConfirmStoreAccessModal] = useState(false);
+    const [showConfirmSyncWorkflowModal, setShowConfirmSyncWorkflowModal] = useState(false);
     const [configData, setConfigData] = useState<ConfigWorkflowDataProps | null>();
     const [updatingStoreAccess, setUpdatingStoreAccess] = useState(false);
     const [temporaryLevelData, setTemporaryLevelData] = useState<any>({
@@ -317,7 +318,7 @@ const actionId = configData?.selectedActions?.[0]?.action_id;
                 }
                 setGroupedWorkflows(groupedWorkflow);
                 if(groupedWorkflow.length > 1){
-                    setSelectedGroup(groupedWorkflow[0]);
+                    setSelectedGroup({...groupedWorkflow[0],workflowName: `Workflow ${String.fromCharCode(65 + 0)}`});
                 }
                 const grpObj = groupedWorkflow[0];
                 let grp;
@@ -1008,7 +1009,7 @@ const actionId = configData?.selectedActions?.[0]?.action_id;
                                             return(
                                                 <button key={grpKey}
                                         onClick={() => {
-                                            setSelectedGroup(grpObj);
+                                            setSelectedGroup({...grpObj,workflowName: `Workflow ${String.fromCharCode(65 + index)}`});
                                         }}
                                         className={`flex gap-2 items-center font-semibold py-2 px-4 text-sm rounded-lg ${isSelectedGrp ? 'bg-white border shadow-sm text-blue-700' : 'text-gray-600 hover:text-gray-800 transition-transform duration-200'}`}>
                                         <label>Workflow {String.fromCharCode(65 + index)} 
@@ -1276,7 +1277,7 @@ const actionId = configData?.selectedActions?.[0]?.action_id;
                                                 <Button
                                                     disabled={levels?.length === 0 || levels?.some(lvl => lvl.role_id === null)}
                                                     onClick={() => {
-                                                        handleSyncWorkflows();
+                                                        setShowConfirmSyncWorkflowModal(true)
                                                     }}
                                                     className="border border-blue-600 bg-white text-blue-600 hover:bg-blue-50 transition-colors duration-200 ">
                                                     <span>Sync to All Users</span>
@@ -1614,6 +1615,37 @@ const actionId = configData?.selectedActions?.[0]?.action_id;
                                 }}
                                 className="py-4 px-6 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors duration-200 text-white">
                                 {updatingStoreAccess ? 'Updating' : 'Confirm'}
+                            </Button>
+                        </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+                        <Dialog open={showConfirmSyncWorkflowModal} onOpenChange={setShowConfirmSyncWorkflowModal}>
+                <DialogContent className="w-md rounded-lg bg-slate-50">
+                    <DialogHeader className="">
+                        <DialogTitle className="capitalize">
+                            Confirm Group Overwrite
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-2 text-gray-600 text-[14px]">
+                        <p>Are you sure you want to apply the <label className="font-semibold text-gray-700">{selectedGroup.workflowName}</label> configuration to all <label className="font-bold text-gray-700">{configData?.assignedUsers.length}</label> users in the selected group?</p>
+                        <p className=" mt-3">This will overwrite any existing workflow configurations they might currently have.</p>
+                    </div>
+                    <DialogFooter className="mt-2">
+                        <div className="flex justify-end gap-2">
+                            <Button className="py-4 px-5 rounded-lg" variant="outline" onClick={() => {
+                                setShowConfirmSyncWorkflowModal(false);
+                            }}>
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={() => {
+                                    handleSyncWorkflows();
+                                    setShowConfirmSyncWorkflowModal(false)
+                                }}
+                                className="py-4 px-6 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors duration-200 text-white">
+                                Confirm
                             </Button>
                         </div>
                     </DialogFooter>

@@ -837,6 +837,37 @@ export const ModuleAccess = () => {
 
             if (DeActivateError) throw DeActivateError;
 
+            let RoleName="";
+            if(roleId !== "all"){
+                const role = roles.find(role => role.id === roleId);
+                RoleName = role.name;
+            }
+
+            let UserName="";
+            if(userId !== "all"){
+                const user = users.find(user => user.id === userId);
+                UserName = user?.first_name +' '+ user?.last_name
+            }
+
+            const systemLogs = {
+        company_id: companyId,
+        transaction_date: new Date().toISOString(),
+        module: "Module and Access",
+        scope:  'Edit',
+        key: `${userId !== "all" ? `${UserName}` : `${roleId !== "all" ? `${RoleName}` : null}`}`,
+        log: `${userId !== "all" ? `Module Access permissions for the user ${UserName} updated by ${userData.full_name}` : 
+            `Module Access permissions for users in ${roleId === "all" ? "all roles" : `${RoleName} role`} updated by ${userData.full_name}`
+        }`,
+        action_by: userData.id,
+        created_at: new Date().toISOString(),
+      };
+
+      const { error: systemLogError } = await supabase
+            .from('system_log')
+            .insert(systemLogs);
+
+          if (systemLogError) throw systemLogError;
+
             if (ActivateData && DeActivateData) {
                 toast.success("Permissions Saved Successfully");
                 setInitialPermissions([])
